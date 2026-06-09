@@ -1,11 +1,11 @@
 // server/services/recommendation.js
 // Pure logic (no external calls): given the rides, work out where to stay.
 //
-// Heuristic: the best base for next year's trip is the geographic center of the
-// places you actually needed to be. Airport transfers are EXCLUDED because they
-// pull the center toward SFO and you don't "stay" at the airport. We compute the
-// centroid of every non-airport pickup/dropoff endpoint, then rank hotels by
-// straight-line (haversine) distance to that centroid.
+// Heuristic: the best base for next year's trip is the densest cluster of places
+// you actually needed to be. Airport transfers are EXCLUDED because they pull the
+// signal toward the airport. We cluster the remaining pickup/dropoff endpoints
+// with a small DBSCAN pass, then choose the cluster medoid (an observed stop) so
+// the recommendation does not land in water or other impossible midpoint areas.
 
 const EARTH_KM = 6371;
 const toRad = (d) => (d * Math.PI) / 180;
@@ -38,10 +38,95 @@ export function summarizeRides(rides) {
   };
 }
 
+const DEFAULT_DBSCAN_EPS_KM = 1.6; // about 1 mile: city-neighborhood scale
+const DEFAULT_DBSCAN_MIN_POINTS = 3;
+
+function roundCoord(p) {
+  return { lat: Math.round(p.lat * 1e6) / 1e6, lng: Math.round(p.lng * 1e6) / 1e6 };
+}
+
+function ridePoints(rides) {
+  const pts = [];
+  for (const r of rides) {
+    if (Number.isFinite(r.pickup?.lat) && Number.isFinite(r.pickup?.lng)) {
+      pts.push({ ...r.pickup, rideId: r.id, role: "pickup" });
+    }
+    if (Number.isFinite(r.dropoff?.lat) && Number.isFinite(r.dropoff?.lng)) {
+      pts.push({ ...r.dropoff, rideId: r.id, role: "dropoff" });
+    }
+  }
+  return pts;
+}
+
+function regionQuery(points, idx, epsKm) {
+  const neighbors = [];
+  for (let i = 0; i < points.length; i++) {
+    if (haversineKm(points[idx], points[i]) <= epsKm) neighbors.push(i);
+  }
+  return neighbors;
+}
+
+function dbscan(points, { epsKm = DEFAULT_DBSCAN_EPS_KM, minPoints = DEFAULT_DBSCAN_MIN_POINTS } = {}) {
+  const labels = Array(points.length).fill(undefined);
+  let clusterId = 0;
+
+  for (let i = 0; i < points.length; i++) {
+    if (labels[i] !== undefined) continue;
+    const neighbors = regionQuery(points, i, epsKm);
+    if (neighbors.length < minPoints) {
+      labels[i] = -1;
+      continue;
+    }
+
+    labels[i] = clusterId;
+    const seeds = neighbors.filter((n) => n !== i);
+    for (let s = 0; s < seeds.length; s++) {
+      const n = seeds[s];
+      if (labels[n] === -1) labels[n] = clusterId;
+      if (labels[n] !== undefined) continue;
+      labels[n] = clusterId;
+
+      const nextNeighbors = regionQuery(points, n, epsKm);
+      if (nextNeighbors.length >= minPoints) {
+        for (const candidate of nextNeighbors) {
+          if (!seeds.includes(candidate)) seeds.push(candidate);
+        }
+      }
+    }
+    clusterId++;
+  }
+
+  return labels;
+}
+
+function chooseMedoid(points) {
+  if (points.length === 0) return null;
+  let best = points[0];
+  let bestKm = Infinity;
+  for (const candidate of points) {
+    const km = points.reduce((sum, p) => sum + haversineKm(candidate, p), 0);
+    if (km < bestKm) {
+      best = candidate;
+      bestKm = km;
+    }
+  }
+  return best;
+}
+
+function scoreCluster(points) {
+  if (points.length === 0) return -Infinity;
+  const medoid = chooseMedoid(points);
+  const meanKm = points.reduce((sum, p) => sum + haversineKm(medoid, p), 0) / points.length;
+  // Prefer dense, repeated activity. The compactness term breaks ties away from
+  // loose regional averages without letting a single outlier dominate.
+  return points.length - meanKm * 0.2;
+}
+
 /**
  * @param {object[]} rides
  * @returns {{centroid:{lat,lng}, pointCount:number, usedAirportFallback:boolean,
- *            includedRideIds:string[], excludedRideIds:string[]}}
+ *            includedRideIds:string[], excludedRideIds:string[],
+ *            method:string, clusterCount:number, noisePointCount:number}}
  */
 export function computeStayCentroid(rides) {
   let source = rides.filter((r) => !r.isAirport);
@@ -54,22 +139,28 @@ export function computeStayCentroid(rides) {
     usedAirportFallback = true;
   }
 
-  const pts = [];
-  for (const r of source) {
-    if (Number.isFinite(r.pickup?.lat)) pts.push(r.pickup);
-    if (Number.isFinite(r.dropoff?.lat)) pts.push(r.dropoff);
-  }
+  const pts = ridePoints(source);
   if (pts.length === 0) return null;
 
-  const lat = pts.reduce((s, p) => s + p.lat, 0) / pts.length;
-  const lng = pts.reduce((s, p) => s + p.lng, 0) / pts.length;
+  const labels = dbscan(pts);
+  const clusteredLabels = [...new Set(labels.filter((label) => label >= 0))];
+  const clusters = clusteredLabels.map((label) => pts.filter((_, i) => labels[i] === label));
+  const selectedCluster = clusters.length
+    ? clusters.slice().sort((a, b) => scoreCluster(b) - scoreCluster(a))[0]
+    : pts;
+  const medoid = chooseMedoid(selectedCluster);
 
   return {
-    centroid: { lat: Math.round(lat * 1e6) / 1e6, lng: Math.round(lng * 1e6) / 1e6 },
-    pointCount: pts.length,
+    // Keep the existing API field name for the UI, but the value is now a medoid:
+    // a real observed stop from the densest activity cluster.
+    centroid: roundCoord(medoid),
+    pointCount: selectedCluster.length,
     usedAirportFallback,
-    includedRideIds: source.map((r) => r.id),
+    includedRideIds: [...new Set(selectedCluster.map((p) => p.rideId).filter(Boolean))],
     excludedRideIds: rides.filter((r) => !source.includes(r)).map((r) => r.id),
+    method: clusters.length ? "dbscan-medoid" : "medoid-fallback",
+    clusterCount: clusters.length,
+    noisePointCount: labels.filter((label) => label === -1).length,
   };
 }
 
@@ -144,7 +235,7 @@ export function synthesizeTripAnswer({ rides, summary, recommendation } = {}) {
   }
   lines.push(`- Most of your rides clustered around **${hoodShort}**, so that's where you spent the bulk of your time`);
   lines.push("");
-  lines.push(`If you treat this year as the template for next year, the best base is **${hood}** \u2014 the geographic center of your in-city rides.`);
+  lines.push(`If you treat this year as the template for next year, the best base is **${hood}** \u2014 the densest cluster of your in-city ride stops.`);
   lines.push("");
   lines.push("Want me to find the closest 5-star hotel there?");
   return lines.join("\n");
@@ -192,7 +283,7 @@ export function answerTripFollowUp(question, { rides, summary, recommendation, r
   }
   if (has("hotel", "stay", "where", "base", "neighborhood", "area", "recommend")) {
     const hood = recommendation?.neighborhood || "downtown San Francisco";
-    let out = `Based on the center of your in-city rides, the best base is **${hood}**.`;
+    let out = `Based on the densest cluster of your in-city ride stops, the best base is **${hood}**.`;
     if (recommendedHotel) {
       const h = recommendedHotel;
       out += ` The closest 5-star option is **${h.name}**${h.distanceMiles != null ? ` (${h.distanceMiles} mi away)` : ""}${
@@ -224,7 +315,7 @@ export function answerTripFollowUp(question, { rides, summary, recommendation, r
 }
 
 /**
- * Rank hotels by distance to the centroid.
+ * Rank hotels by distance to the recommended point.
  * @returns {object[]} hotels sorted nearest-first with distanceKm/distanceMiles.
  */
 export function rankHotelsByDistance(hotels, centroid) {
