@@ -1,0 +1,24 @@
+{
+  "name": "workiq-trip-planner",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Hero demo of WorkIQ: scan email for Uber receipts, map the rides, recommend where to stay, find a 5-star hotel with WebIQ, and email a report with WorkIQ Tools.",
+  "type": "module",
+  "engines": {
+    "node": ">=18.17.0"
+  },
+  "scripts": {
+    "start": "node server/index.js",
+    "dev": "node --watch server/index.js",
+    "precompute-routes": "node scripts/precompute-routes.mjs",
+    "seed-inbox": "node scripts/seed-inbox.mjs",
+    "draft-worker": "pwsh -NoProfile -ExecutionPolicy Bypass -File scripts/draft-worker.ps1"
+  },
+  "dependencies": {
+    "express": "^4.19.2",
+    "nodemailer": "^6.9.14"
+  },
+  "optionalDependencies": {
+    "@modelcontextprotocol/sdk": "^1.0.4"
+  }
+}

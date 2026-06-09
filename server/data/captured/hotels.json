@@ -1,0 +1,57 @@
+{
+  "_dataset": "captured-webiq-results",
+  "_note": "Captured WebIQ (web search) results for 5-star hotels in downtown San Francisco. Hotel names, addresses and approximate nightly rates are real and were retrieved via web search; coordinates are approximate. The LIVE WebIQ path re-runs the search at demo time.",
+  "query": "best 5-star luxury hotels in downtown San Francisco near Union Square, SoMa and Yerba Buena",
+  "hotels": [
+    {
+      "id": "four-seasons-sf",
+      "name": "Four Seasons Hotel San Francisco",
+      "address": "757 Market St, San Francisco, CA 94103",
+      "lat": 37.7866, "lng": -122.4036,
+      "stars": 5,
+      "nightlyRateUSD": 645,
+      "url": "https://www.fourseasons.com/sanfrancisco/",
+      "highlights": "Equinox Sports Club access, full-service spa, steps from Moscone Center, Union Square and Yerba Buena Gardens."
+    },
+    {
+      "id": "st-regis-sf",
+      "name": "The St. Regis San Francisco",
+      "address": "125 3rd St, San Francisco, CA 94103",
+      "lat": 37.7857, "lng": -122.4011,
+      "stars": 5,
+      "nightlyRateUSD": 700,
+      "url": "https://www.marriott.com/hotels/travel/sfoxr-the-st-regis-san-francisco/",
+      "highlights": "Contemporary luxury, Rem\u00e8de Spa, butler service, adjacent to SFMOMA and Yerba Buena."
+    },
+    {
+      "id": "palace-hotel-sf",
+      "name": "Palace Hotel, a Luxury Collection Hotel",
+      "address": "2 New Montgomery St, San Francisco, CA 94105",
+      "lat": 37.7884, "lng": -122.4019,
+      "stars": 5,
+      "nightlyRateUSD": 530,
+      "url": "https://www.marriott.com/hotels/travel/sfopa-palace-hotel-a-luxury-collection-hotel-san-francisco/",
+      "highlights": "Historic grand hotel, glass-domed Garden Court, short walk to Union Square and Yerba Buena."
+    },
+    {
+      "id": "taj-campton-place-sf",
+      "name": "Taj Campton Place",
+      "address": "340 Stockton St, San Francisco, CA 94108",
+      "lat": 37.7889, "lng": -122.4070,
+      "stars": 5,
+      "nightlyRateUSD": 470,
+      "url": "https://www.tajhotels.com/en-in/taj/taj-campton-place-san-francisco/",
+      "highlights": "Boutique luxury, Michelin-starred dining, directly on Union Square."
+    },
+    {
+      "id": "ritz-carlton-sf",
+      "name": "The Ritz-Carlton, San Francisco",
+      "address": "600 Stockton St, San Francisco, CA 94108",
+      "lat": 37.7919, "lng": -122.4084,
+      "stars": 5,
+      "nightlyRateUSD": 609,
+      "url": "https://www.ritzcarlton.com/en/hotels/sanfrancisco",
+      "highlights": "Iconic Nob Hill landmark, full-service spa, club lounge, short walk to Union Square."
+    }
+  ]
+}

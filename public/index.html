@@ -1,0 +1,139 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>WorkIQ Trip Planner — Hero Demo</title>
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+  <link rel="icon" href="data:," />
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+  <header class="topbar">
+    <div class="brand">
+      <span class="brand-mark">WIQ</span>
+      <div>
+        <div class="brand-title">WorkIQ Trip Planner</div>
+        <div class="brand-sub">Ask &middot; WebIQ &middot; Tools &mdash; a hero demo</div>
+      </div>
+    </div>
+    <div class="modes" id="modeBanner">
+      <span class="mode-chip" id="chip-workiq">WorkIQ: …</span>
+      <span class="mode-chip" id="chip-webiq">WebIQ: …</span>
+      <span class="mode-chip" id="chip-mail">Mail: …</span>
+    </div>
+    <button class="btn btn-ghost log-toggle" id="btn-toggle-log" aria-pressed="true" title="Show or hide the right-hand panel">🗔 Hide panel</button>
+    <div class="presenter">
+      <details class="presenter-menu">
+        <summary>⚙ Presenter</summary>
+        <div class="presenter-panel">
+          <label>WorkIQ mode
+            <select id="sel-workiq"><option value="">(server default)</option><option value="captured">captured</option><option value="live">live</option><option value="auto">auto</option></select>
+          </label>
+          <label>WebIQ mode
+            <select id="sel-webiq"><option value="">(server default)</option><option value="captured">captured</option><option value="live">live</option><option value="auto">auto</option></select>
+          </label>
+          <label>Email mode
+            <select id="sel-mail"><option value="">(server default)</option><option value="preview">preview</option><option value="draft">draft (save to Drafts)</option><option value="smtp">smtp (really send)</option></select>
+          </label>
+          <label>Send report to
+            <input id="inp-to" type="email" placeholder="defaults to MAIL_TO (you@example.com)" />
+          </label>
+          <button id="btn-reset" class="btn btn-ghost">↺ Reset demo</button>
+        </div>
+      </details>
+    </div>
+  </header>
+
+  <main class="layout">
+    <!-- Left rail: guided steps + results -->
+    <section class="rail rail-left">
+      <ol class="steps" id="steps">
+        <li class="step" data-step="1">
+          <div class="step-head"><span class="step-num">1</span><span class="step-title">Scan my real mailbox</span><span class="api-badge badge-ask">WorkIQ Ask</span></div>
+          <p class="step-desc">WorkIQ <b>Ask</b> reads your real Microsoft 365 mailbox for Uber ride receipts, then maps the trip and totals the spend. If the live call fails or finds too few rides, it safely falls back to a representative sample.</p>
+          <button class="btn btn-ask" id="btn-scan">🔵 Ask WorkIQ</button>
+          <div class="step-result" id="res-scan" hidden></div>
+        </li>
+        <li class="step" data-step="2">
+          <div class="step-head"><span class="step-num">2</span><span class="step-title">Map &amp; total the rides</span></div>
+          <p class="step-desc">Plot every ride and add up what the trip cost.</p>
+          <div class="step-result" id="res-summary" hidden></div>
+        </li>
+        <li class="step" data-step="3">
+          <div class="step-head"><span class="step-num">3</span><span class="step-title">Recommend where to stay</span></div>
+          <p class="step-desc">Use the geographic center of your in-city rides as the base for next year. Airport transfers are excluded.</p>
+          <button class="btn" id="btn-reco" disabled>📍 Recommend stay area</button>
+          <div class="step-result" id="res-reco" hidden></div>
+        </li>
+        <li class="step" data-step="4">
+          <div class="step-head"><span class="step-num">4</span><span class="step-title">Find the best 5-star hotel</span><span class="api-badge badge-webiq">WebIQ</span></div>
+          <p class="step-desc">WebIQ searches the web for the closest 5-star hotel to the recommended area.</p>
+          <button class="btn btn-webiq" id="btn-hotels" disabled>🟣 Search with WebIQ</button>
+          <div class="step-result" id="res-hotels" hidden></div>
+        </li>
+        <li class="step" data-step="5">
+          <div class="step-head"><span class="step-num">5</span><span class="step-title">Email the report</span><span class="api-badge badge-tool">WorkIQ Tool</span></div>
+          <p class="step-desc">A WorkIQ <b>Tool</b> sends the summary by email (preview-safe by default).</p>
+          <button class="btn btn-tool" id="btn-report" disabled>🟢 Send with WorkIQ Tool</button>
+          <div class="step-result" id="res-report" hidden></div>
+        </li>
+      </ol>
+    </section>
+
+    <!-- Center: map -->
+    <section class="map-wrap">
+      <div id="map"></div>
+      <div class="map-legend" id="legend">
+        <span><i class="dot dot-incity"></i> In-city ride</span>
+        <span><i class="dot dot-centroid"></i> Recommended stay area</span>
+        <span><i class="dot dot-hotel"></i> 5-star hotel</span>
+      </div>
+    </section>
+
+    <!-- Right rail: tabbed Chat (audience) + Call Log (presenter) -->
+    <section class="rail rail-right">
+      <div class="rail-tabs" role="tablist">
+        <button class="rail-tab active" id="tab-chat" role="tab" aria-selected="true">💬 Chat</button>
+        <button class="rail-tab" id="tab-log" role="tab" aria-selected="false">📋 Call Log</button>
+        <button class="iconbtn rail-collapse" id="btn-collapse-log" title="Hide panel" aria-label="Hide right panel">✕</button>
+      </div>
+
+      <!-- Chat pane (default / audience-facing) -->
+      <div class="rail-pane" id="pane-chat">
+        <div class="chat-head">
+          <span class="api-badge badge-ask">WorkIQ Ask</span>
+          <span class="chat-head-label">Conversational answers, grounded in your mailbox</span>
+        </div>
+        <div class="chat" id="chat">
+          <div class="chat-empty">Press <b>Ask WorkIQ</b> in step 1 to start the conversation.</div>
+        </div>
+        <form class="chat-input" id="chat-form" autocomplete="off">
+          <input id="chat-text" type="text" placeholder="Ask a follow-up about your trip…" disabled />
+          <button class="btn btn-ask" id="chat-send" type="submit" disabled>Send</button>
+        </form>
+      </div>
+
+      <!-- Call Log pane (presenter view) -->
+      <div class="rail-pane" id="pane-log" hidden>
+        <div class="calllog-head">
+          <h2>WorkIQ API Call Log</h2>
+          <p>Every WorkIQ / WebIQ / Tool invocation, live.</p>
+        </div>
+        <div class="calllog" id="calllog"><div class="calllog-empty">No calls yet. Start with step 1.</div></div>
+      </div>
+    </section>
+  </main>
+
+  <!-- Raw response / email preview modal -->
+  <div class="modal" id="modal" hidden>
+    <div class="modal-card">
+      <div class="modal-head"><span id="modal-title">Details</span><button id="modal-close" class="btn btn-ghost">✕</button></div>
+      <div class="modal-body" id="modal-body"></div>
+    </div>
+  </div>
+
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>
