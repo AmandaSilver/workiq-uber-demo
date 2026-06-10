@@ -1,4 +1,4 @@
-# WorkIQ Trip Planner — a hero demo of WorkIQ
+# WorkIQ Trip Planner — a hero demo for WorkIQ
 
 A small, local web app that shows off **WorkIQ** end-to-end:
 
