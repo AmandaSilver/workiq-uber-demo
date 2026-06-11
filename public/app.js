@@ -90,7 +90,7 @@ function pathUpTo(pts, frac) {
 // the whole sequence plays like a fast time-lapse of the trip (~5s total).
 function animateRides(toDraw) {
   const token = ++rideAnimToken;
-  const TOTAL_MS = 5000;
+  const TOTAL_MS = 3000;
   const perRide = Math.max(350, TOTAL_MS / toDraw.length);
   const drawDur = Math.max(220, perRide - 120); // small gap between rides
   let idx = 0;
