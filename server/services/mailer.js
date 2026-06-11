@@ -108,7 +108,7 @@ export function buildReportHtml(payload) {
         <div style="flex:1;min-width:150px;background:#f3fbf4;border:1px solid #cfe9d4;border-radius:10px;padding:14px">
           <div style="font-size:12px;color:#5a6b7b">Recommended stay area</div>
           <div style="font-size:18px;font-weight:700;color:#107c41">${recommendation?.neighborhood || "\u2014"}</div>
-          <div style="font-size:12px;color:#5a6b7b">center of ${summary?.inCityRideCount ?? 0} in-city rides</div>
+          <div style="font-size:12px;color:#5a6b7b">densest in-city ride cluster</div>
         </div>
       </div>
 
@@ -118,7 +118,7 @@ export function buildReportHtml(payload) {
         <div style="font-size:12px;color:#0f6cbd;font-weight:700;letter-spacing:.05em">\u2b50 RECOMMENDED 5-STAR HOTEL (via WebIQ)</div>
         <div style="font-size:18px;font-weight:700;margin-top:4px">${hotel.name}</div>
         <div style="color:#5a6b7b;font-size:14px">${hotel.address}</div>
-        <div style="margin-top:6px;font-size:14px">${hotel.distanceMiles != null ? `${hotel.distanceMiles} mi from your trip's center` : ""}${
+        <div style="margin-top:6px;font-size:14px">${hotel.distanceMiles != null ? `${hotel.distanceMiles} mi from your recommended base` : ""}${
               hotel.nightlyRateUSD ? ` &middot; from $${hotel.nightlyRateUSD}/night` : ""
             }</div>
         ${hotel.url ? `<a href="${hotel.url}" style="color:#0f6cbd;font-size:13px">${hotel.url}</a>` : ""}

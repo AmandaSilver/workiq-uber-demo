@@ -24,7 +24,7 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const app = express();
 app.use(express.json({ limit: "1mb" }));
 
-// A trip needs at least this many in-city rides before its geographic center is
+// A trip needs at least this many in-city rides before its activity cluster is
 // a meaningful "where to stay" signal. Below this, the live result is too thin
 // and we fall back to the representative sample (see /api/scan-receipts).
 const MIN_INCITY_FOR_LIVE = 3;
@@ -61,6 +61,9 @@ function recomputeRecommendation() {
     usedAirportFallback: centroidInfo.usedAirportFallback,
     includedRideIds: centroidInfo.includedRideIds,
     excludedRideIds: centroidInfo.excludedRideIds,
+    method: centroidInfo.method,
+    clusterCount: centroidInfo.clusterCount,
+    noisePointCount: centroidInfo.noisePointCount,
   };
   return state.recommendation;
 }
@@ -100,7 +103,7 @@ app.post("/api/scan-receipts", async (req, res) => {
 
     // Single fully-live flow with a captured safety net. A real mailbox is the
     // hero, but a trip with only a ride or two can't produce a meaningful
-    // stay-area centroid. When live succeeds yet returns too few in-city rides,
+    // stay-area recommendation. When live succeeds yet returns too few in-city rides,
     // transparently fall back to the representative sample so the planning steps
     // still have something compelling to work with. Skip this only when the
     // presenter has explicitly pinned the mode to "live".
@@ -125,7 +128,7 @@ app.post("/api/scan-receipts", async (req, res) => {
     state.hotels = [];
     state.recommendedHotel = null;
     // The active dataset (live or sample) drives the recommendation directly:
-    // ready as soon as we can compute a centroid from it.
+    // ready as soon as we can compute a clustered recommendation from it.
     state.readyForRecommendation = Boolean(recomputeRecommendation());
     // Synthesize the conversational "trip debrief" answer for the Ask chat panel,
     // grounded in the receipts WorkIQ just extracted.
@@ -157,7 +160,7 @@ app.post("/api/scan-receipts", async (req, res) => {
   }
 });
 
-// --- Step 2: recommendation (geographic center of the trip) ------------------
+// --- Step 2: recommendation (densest activity cluster of the trip) ------------
 app.get("/api/recommendation", (_req, res) => {
   if (state.rides.length === 0) {
     return res.status(409).json({ error: "No rides yet. Run /api/scan-receipts first." });
