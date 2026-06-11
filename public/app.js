@@ -33,44 +33,124 @@ function clearLayer(name) {
   layers[name].clearLayers();
 }
 
-function drawRides(rides) {
+// Token bumped on every drawRides() call so any in-flight animation from a
+// previous call cancels itself instead of drawing onto a cleared layer.
+let rideAnimToken = 0;
+
+function rideLine(r) {
+  const a = [r.pickup.lat, r.pickup.lng];
+  const b = [r.dropoff.lat, r.dropoff.lng];
+  // Prefer the real street-following route; fall back to a straight line.
+  const pts = Array.isArray(r.route) && r.route.length > 1 ? r.route : [a, b];
+  return { a, b, pts, color: r.isAirport ? "#7a8290" : "#2b9bff" };
+}
+
+function rideEndpoint(label, pt, latlng, r, color) {
+  L.circleMarker(latlng, { radius: 5, color, fillColor: color, fillOpacity: 0.9, weight: 1 })
+    .bindPopup(
+      `<b>${label}:</b> ${pt.name || pt.address}<br>${r.date} ${r.time} &middot; $${(r.total || 0).toFixed(
+        2
+      )}${r.isAirport ? "<br><i>airport transfer (excluded from recommendation)</i>" : ""}`
+    )
+    .addTo(layers.rides);
+}
+
+// Return the leading portion of `pts` covering `frac` (0..1) of the total path
+// length, so a polyline appears to "grow" along its real route at a steady pace.
+function pathUpTo(pts, frac) {
+  if (pts.length < 2) return pts.slice();
+  let total = 0;
+  const seg = [];
+  for (let i = 1; i < pts.length; i++) {
+    const d = Math.hypot(pts[i][0] - pts[i - 1][0], pts[i][1] - pts[i - 1][1]);
+    seg.push(d);
+    total += d;
+  }
+  if (total === 0) return [pts[0]];
+  const target = total * Math.max(0, Math.min(1, frac));
+  const out = [pts[0]];
+  let acc = 0;
+  for (let i = 1; i < pts.length; i++) {
+    if (acc + seg[i - 1] < target) {
+      out.push(pts[i]);
+      acc += seg[i - 1];
+    } else {
+      const t = seg[i - 1] === 0 ? 0 : (target - acc) / seg[i - 1];
+      out.push([
+        pts[i - 1][0] + (pts[i][0] - pts[i - 1][0]) * t,
+        pts[i - 1][1] + (pts[i][1] - pts[i - 1][1]) * t,
+      ]);
+      break;
+    }
+  }
+  return out;
+}
+
+// Draw the rides one after another, each polyline growing along its route, so
+// the whole sequence plays like a fast time-lapse of the trip (~5s total).
+function animateRides(toDraw) {
+  const token = ++rideAnimToken;
+  const TOTAL_MS = 3000;
+  const perRide = Math.max(350, TOTAL_MS / toDraw.length);
+  const drawDur = Math.max(220, perRide - 120); // small gap between rides
+  let idx = 0;
+
+  function next() {
+    if (token !== rideAnimToken || idx >= toDraw.length) return;
+    const r = toDraw[idx];
+    const { a, b, pts, color } = rideLine(r);
+    rideEndpoint("From", r.pickup, a, r, color);
+    const poly = L.polyline([a], {
+      color,
+      weight: 4,
+      opacity: 0.9,
+      dashArray: r.isAirport ? "6 7" : null,
+    }).addTo(layers.rides);
+    const head = L.circleMarker(a, { radius: 5, color, fillColor: "#fff", fillOpacity: 1, weight: 2 }).addTo(layers.rides);
+    const start = performance.now();
+    function step(t) {
+      if (token !== rideAnimToken) return;
+      const frac = Math.min(1, (t - start) / drawDur);
+      const grown = pathUpTo(pts, frac);
+      poly.setLatLngs(grown);
+      head.setLatLng(grown[grown.length - 1]);
+      if (frac < 1) {
+        requestAnimationFrame(step);
+      } else {
+        layers.rides.removeLayer(head);
+        rideEndpoint("To", r.dropoff, b, r, color);
+        idx++;
+        next();
+      }
+    }
+    requestAnimationFrame(step);
+  }
+  next();
+}
+
+function drawRides(rides, { animate = false } = {}) {
   clearLayer("rides");
+  rideAnimToken++; // cancel any animation still running from a prior call
   // Hide airport transfers — long freeway lines to SFO make the city map look
   // bad and aren't part of the "where I need to be" story. But never blank the
   // map: if every ride is an airport transfer (e.g. a thin live proof), show all.
   const inCity = rides.filter((r) => !r.isAirport);
   const toDraw = inCity.length ? inCity : rides;
   const bounds = [];
-  toDraw.forEach((r) => {
-    const a = [r.pickup.lat, r.pickup.lng];
-    const b = [r.dropoff.lat, r.dropoff.lng];
-    // Prefer the real street-following route; fall back to a straight line.
-    const line = Array.isArray(r.route) && r.route.length > 1 ? r.route : [a, b];
-    line.forEach((pt) => bounds.push(pt));
-    const color = r.isAirport ? "#7a8290" : "#2b9bff";
-    L.polyline(line, {
-      color,
-      weight: 4,
-      opacity: 0.9,
-      dashArray: r.isAirport ? "6 7" : null,
-    }).addTo(layers.rides);
-    [["From", r.pickup, a], ["To", r.dropoff, b]].forEach(([label, pt, latlng]) => {
-      L.circleMarker(latlng, {
-        radius: 5,
-        color,
-        fillColor: color,
-        fillOpacity: 0.9,
-        weight: 1,
-      })
-        .bindPopup(
-          `<b>${label}:</b> ${pt.name || pt.address}<br>${r.date} ${r.time} &middot; $${(r.total || 0).toFixed(
-            2
-          )}${r.isAirport ? "<br><i>airport transfer (excluded from recommendation)</i>" : ""}`
-        )
-        .addTo(layers.rides);
-    });
-  });
+  toDraw.forEach((r) => rideLine(r).pts.forEach((pt) => bounds.push(pt)));
+  // Frame the whole trip up front so the animation plays inside a stable view.
   if (bounds.length) map.fitBounds(bounds, { padding: [50, 50] });
+
+  if (animate && toDraw.length) {
+    animateRides(toDraw);
+    return;
+  }
+  toDraw.forEach((r) => {
+    const { a, b, pts, color } = rideLine(r);
+    L.polyline(pts, { color, weight: 4, opacity: 0.9, dashArray: r.isAirport ? "6 7" : null }).addTo(layers.rides);
+    rideEndpoint("From", r.pickup, a, r, color);
+    rideEndpoint("To", r.dropoff, b, r, color);
+  });
 }
 
 function drawCentroid(reco) {
@@ -186,7 +266,7 @@ $("#btn-scan").addEventListener("click", async () => {
     if (myGen !== scanGen) return; // a newer scan superseded this one
     liveData = data;
     state.rides = data.rides;
-    drawRides(data.rides);
+    drawRides(data.rides, { animate: true });
     const s = data.summary;
     const res = $("#res-scan");
     res.hidden = false;
@@ -256,30 +336,34 @@ $("#btn-reco").addEventListener("click", async () => {
   }
 });
 
+function renderHotels(data) {
+  state.hotels = data.hotels;
+  drawHotels(data.hotels);
+  const top = data.recommendedHotel;
+  const res = $("#res-hotels");
+  res.hidden = false;
+  res.innerHTML = `
+    <div class="hotel-card">
+      <div class="kpi-label" style="color:#b76bff">⭐ Best 5-star hotel near your recommended base</div>
+      <h4>${top.name}</h4>
+      <div class="meta">${top.address}<br>${top.distanceMiles} mi from your recommended base${top.nightlyRateUSD ? ` · from $${top.nightlyRateUSD}/night` : ""}</div>
+      <a class="linklike" href="${top.url}" target="_blank">Open hotel website →</a>
+    </div>
+    <ul class="hotel-list">
+      ${data.hotels.slice(1).map((h) => `<li><span>${h.name}</span><span>${h.distanceMiles} mi</span></li>`).join("")}
+    </ul>
+    <p style="margin:8px 0 0;color:#9aa3b2;font-size:11.5px">Query: “${escapeHtml(data.query)}”</p>
+    ${provenanceHtml(data.mode, data.status, data.detail)}`;
+  setStep(4, "done"); setStep(5, "active");
+  $("#btn-report").disabled = false;
+}
+
 $("#btn-hotels").addEventListener("click", async () => {
   const btn = $("#btn-hotels");
   busy(btn, true);
   try {
     const data = await api("/api/find-hotels", { method: "POST", body: { mode: modeOverride("webiq") } });
-    state.hotels = data.hotels;
-    drawHotels(data.hotels);
-    const top = data.recommendedHotel;
-    const res = $("#res-hotels");
-    res.hidden = false;
-    res.innerHTML = `
-      <div class="hotel-card">
-        <div class="kpi-label" style="color:#b76bff">⭐ Best 5-star hotel near your recommended base</div>
-        <h4>${top.name}</h4>
-        <div class="meta">${top.address}<br>${top.distanceMiles} mi from your recommended base${top.nightlyRateUSD ? ` · from $${top.nightlyRateUSD}/night` : ""}</div>
-        <a class="linklike" href="${top.url}" target="_blank">Open hotel website →</a>
-      </div>
-      <ul class="hotel-list">
-        ${data.hotels.slice(1).map((h) => `<li><span>${h.name}</span><span>${h.distanceMiles} mi</span></li>`).join("")}
-      </ul>
-      <p style="margin:8px 0 0;color:#9aa3b2;font-size:11.5px">Query: “${escapeHtml(data.query)}”</p>
-      ${provenanceHtml(data.mode, data.status, data.detail)}`;
-    setStep(4, "done"); setStep(5, "active");
-    $("#btn-report").disabled = false;
+    renderHotels(data);
   } catch (e) {
     showError("res-hotels", "WebIQ hotel search failed.", e);
   } finally {
@@ -433,6 +517,9 @@ $("#chat-form").addEventListener("submit", async (e) => {
   try {
     const data = await api("/api/ask", { method: "POST", body: { question: q } });
     chatTyping(false);
+    if (data.action === "hotels-found" && data.recommendedHotel) {
+      renderHotels(data);
+    }
     appendChat("assistant", data.answer || "…");
   } catch {
     chatTyping(false);
