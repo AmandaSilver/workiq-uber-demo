@@ -167,7 +167,7 @@ await client.connect(transport);
 
 // ===== THE ACTUAL WORKIQ "ASK" INVOCATION =====
 const result = await client.callTool({
-  name: mcpTool,                          // "ask_work_iq"
+  name: mcpTool,                          // "ask"
   arguments: { [questionArg]: WORKIQ_PROMPT },  // question: "Search my email…"
 });
 // ==============================================
@@ -175,7 +175,7 @@ const result = await client.callTool({
 
 > \*"WorkIQ ships as an **MCP server** — the same one the VS Code / Copilot harness
 > uses. We spawn it (`npx @microsoft/workiq mcp`), then make one call: the
-> **`ask_work_iq`** tool with a natural‑language **`question`**. That's the entire Ask
+> **`ask`** tool with a natural‑language **`question`**. That's the entire Ask
 > API — no SDK, no mailbox plumbing on our side. WorkIQ reads my M365 data and hands
 > back the answer."\*
 
@@ -183,7 +183,7 @@ Two things worth pointing at right above it:
 
 - **The prompt** (`WORKIQ_PROMPT`, \~line 24) — \*"this is literally the English I send;
   I ask for strict JSON just to keep parsing reliable."\*
-- **The tool name & arg** come from config (`mcpTool = ask_work_iq`,
+- **The tool name & arg** come from config (`mcpTool = ask`,
   `questionArg = question`) — *"swappable, but this is the real WorkIQ Ask tool."*
 
 ### 🟢 WorkIQ **Tool** — `server/services/mailer.js`

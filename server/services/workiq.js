@@ -85,8 +85,16 @@ async function callLiveWorkIQ() {
   try {
     await withTimeout(client.connect(transport), "WorkIQ MCP connect");
     // ===== THE ACTUAL WORKIQ "ASK" INVOCATION =====
+    // Pass `timeout` through to the MCP SDK so its OWN per-request timer matches
+    // our configured budget. Without this the SDK applies a default 60s request
+    // timeout (MCP error -32001) that fires before our withTimeout wrapper — and a
+    // real mailbox reasoning query can legitimately run longer than 60s.
     const result = await withTimeout(
-      client.callTool({ name: mcpTool, arguments: { [questionArg]: WORKIQ_PROMPT } }),
+      client.callTool(
+        { name: mcpTool, arguments: { [questionArg]: WORKIQ_PROMPT } },
+        undefined,
+        { timeout: timeoutMs, resetTimeoutOnProgress: true }
+      ),
       "WorkIQ Ask"
     );
     // ==============================================
@@ -96,10 +104,11 @@ async function callLiveWorkIQ() {
       .join("\n")
       .trim();
     if (!text) throw new Error("WorkIQ returned an empty response.");
-    // The WorkIQ MCP "ask" tool wraps its answer as
-    //   {"response": "<the actual answer>", "conversationId": "..."}
-    // Unwrap it so the receipt parser sees the real answer (often a JSON array),
-    // not the escaped envelope.
+    // The WorkIQ "ask" tool returns the answer as plain text content (as of
+    // @microsoft/workiq@1.0.0 — often a JSON array of receipts). Older preview
+    // builds wrapped it as {"response":"<answer>","conversationId":"..."}.
+    // unwrapWorkIQAnswer() handles both: raw text passes through, the old envelope
+    // is unwrapped, so the receipt parser always sees the real answer.
     return unwrapWorkIQAnswer(text);
   } finally {
     // Close the client AND the transport so the spawned npx child is reaped even
@@ -114,7 +123,7 @@ async function callLiveWorkIQ() {
  *
  * The slow, variable part of a live Ask is the mailbox query itself (~30s+), which
  * we now cover with a generous timeout. This pre-warm eliminates the OTHER cold
- * cost: `npx -y @microsoft/workiq@latest` downloading the package and spawning the
+ * cost: `npx -y @microsoft/workiq@1.0.0` downloading the package and spawning the
  * MCP child. We connect + listTools (a cheap handshake) and tear down, leaving the
  * npx cache hot so the real call's connect phase stays a few seconds, not tens.
  *

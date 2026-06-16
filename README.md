@@ -59,8 +59,8 @@ Copy `.env.example` to `.env` to choose how each boundary behaves. Three modes e
 # These exact values work with the WorkIQ CLI plugin installed in the Copilot harness:
 WORKIQ_MODE=auto
 WORKIQ_MCP_COMMAND=npx
-WORKIQ_MCP_ARGS=-y @microsoft/workiq@latest mcp
-WORKIQ_MCP_TOOL=ask_work_iq
+WORKIQ_MCP_ARGS=-y @microsoft/workiq@1.0.0 mcp
+WORKIQ_MCP_TOOL=ask
 WORKIQ_MCP_QUESTION_ARG=question
 WORKIQ_TIMEOUT_MS=120000          # npx cold-start + a real mailbox query can take ~40s
 
@@ -79,9 +79,11 @@ SMTP_PASS=...
 > **Auth:** the live WorkIQ path reuses the Microsoft 365 sign-in already cached by the Copilot
 > harness (EULA accepted once), so the app-spawned MCP process connects with **no extra login prompt**.
 
-> **Response envelope:** `ask_work_iq` returns `{ "response": "<answer>", "conversationId": "..." }`
-> where `response` is itself a string (often a JSON array of receipts). `workiq.js` unwraps this via
-> `unwrapWorkIQAnswer()` before parsing — otherwise only partial data survives.
+> **Response shape:** as of `@microsoft/workiq@1.0.0` the `ask` tool returns the answer as plain
+> **text content** (often a JSON array of receipts) with `{ answer, conversationId }` in
+> `structuredContent`. Earlier preview builds wrapped it as `{ "response": "...", "conversationId": "..." }`.
+> `workiq.js` calls `unwrapWorkIQAnswer()` which passes raw text through and still unwraps the old
+> envelope, so both shapes parse cleanly.
 
 You can also flip modes per-run from the **⚙ Presenter** menu in the top-right (great for
 showing "captured" then re-running the same step "live").
