@@ -6,6 +6,19 @@
   <title>WorkIQ Trip Planner — Hero Demo</title>
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
   <link rel="icon" href="data:," />
+  <!-- Apply the saved/OS theme before the stylesheet paints to avoid a flash of
+       the wrong theme. The full toggle wiring lives in app.js. -->
+  <script>
+    (function () {
+      try {
+        var t = localStorage.getItem("wiq-theme");
+        if (t !== "light" && t !== "dark") {
+          t = window.matchMedia("(prefers-color-scheme: light)").matches ? "light" : "dark";
+        }
+        document.documentElement.dataset.theme = t;
+      } catch (e) { /* ignore */ }
+    })();
+  </script>
   <link rel="stylesheet" href="styles.css" />
 </head>
 <body>
@@ -23,6 +36,7 @@
       <span class="mode-chip" id="chip-webiq">WebIQ: …</span>
       <span class="mode-chip" id="chip-mail">Mail: …</span>
     </div>
+    <button class="btn btn-ghost theme-toggle" id="btn-theme" title="Switch between light and dark theme" aria-label="Toggle light or dark theme">🌙 Dark</button>
     <button class="btn btn-ghost log-toggle" id="btn-toggle-log" aria-pressed="true" title="Show or hide the right-hand panel">🗔 Hide panel</button>
     <div class="presenter">
       <details class="presenter-menu">

@@ -361,7 +361,7 @@ function renderHotels(data) {
     <ul class="hotel-list">
       ${data.hotels.slice(1).map((h) => `<li><span>${h.name}</span><span>${h.distanceMiles} mi</span></li>`).join("")}
     </ul>
-    <p style="margin:8px 0 0;color:#9aa3b2;font-size:11.5px">Query: “${escapeHtml(data.query)}”</p>
+    <p style="margin:8px 0 0;color:var(--muted);font-size:11.5px">Query: “${escapeHtml(data.query)}”</p>
     ${provenanceHtml(data.mode, data.status, data.detail)}`;
   setStep(4, "done"); setStep(5, "active");
   $("#btn-report").disabled = false;
@@ -685,6 +685,31 @@ async function refreshCallLog() {
 
 setStep(1, "active");
 refreshConfig();
+
+/* ---------------- Theme (light / dark) ----------------
+   The initial theme is set by the inline <head> script (saved choice, else OS
+   preference) to avoid a flash. Here we just keep the toggle button in sync and
+   persist explicit user choices under the same `wiq-theme` key. */
+const THEME_KEY = "wiq-theme";
+function currentTheme() {
+  return document.documentElement.dataset.theme === "light" ? "light" : "dark";
+}
+function syncThemeButton(theme) {
+  const btn = $("#btn-theme");
+  if (!btn) return;
+  const dark = theme === "dark";
+  btn.textContent = dark ? "🌙 Dark" : "☀ Light";
+  btn.setAttribute("aria-pressed", String(!dark));
+}
+function setTheme(theme) {
+  document.documentElement.dataset.theme = theme;
+  syncThemeButton(theme);
+  try { localStorage.setItem(THEME_KEY, theme); } catch { /* ignore */ }
+}
+syncThemeButton(currentTheme());
+const themeBtn = $("#btn-theme");
+if (themeBtn) themeBtn.addEventListener("click", () => setTheme(currentTheme() === "dark" ? "light" : "dark"));
+
 (() => {
   const el = $("#chk-demo-mode");
   if (el) {

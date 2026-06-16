@@ -11,6 +11,37 @@
   --amber: #f2b13c;    /* captured */
   --red: #ff5b6e;      /* error / fallback */
   --blue-soft: #11335a;
+
+  /* Accent "inks": the colour to use when an accent is rendered as *text*.
+     The bright accents above read well on dark surfaces, so the inks default
+     to the accents themselves. The light theme overrides them with darker
+     shades so accent-coloured text stays legible on light surfaces. */
+  --ask-ink: var(--ask);
+  --webiq-ink: var(--webiq);
+  --tool-ink: var(--tool);
+  --amber-ink: var(--amber);
+  --red-ink: var(--red);
+}
+
+/* ---------- Light theme ----------
+   A single [data-theme="light"] block re-maps the surface/text/line vars and
+   darkens the accent inks. Everything else flows through the variables, so the
+   handful of rules below only exist to fix spots that previously hardcoded
+   light-on-dark colours. */
+:root[data-theme="light"] {
+  --bg: #f4f6fa;
+  --panel: #ffffff;
+  --panel-2: #eef1f6;
+  --line: #d4dae3;
+  --text: #1b2330;
+  --muted: #586271;
+  --blue-soft: #d7e8ff;
+
+  --ask-ink: #0a66c2;
+  --webiq-ink: #7a3fd0;
+  --tool-ink: #15923f;
+  --amber-ink: #8a5d00;
+  --red-ink: #d23048;
 }
 
 * { box-sizing: border-box; }
@@ -107,6 +138,7 @@ body {
 .layout.rail-hidden .rail-right { display: none; }
 
 .log-toggle { align-self: center; white-space: nowrap; }
+.theme-toggle { align-self: center; white-space: nowrap; min-width: 86px; }
 .calllog-head-row { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
 .iconbtn {
   border: 1px solid var(--line); background: var(--panel-2); color: var(--muted);
@@ -132,9 +164,9 @@ body {
   font-size: 10.5px; font-weight: 700; letter-spacing: .04em; text-transform: uppercase;
   padding: 3px 8px; border-radius: 999px; border: 1px solid transparent; white-space: nowrap;
 }
-.badge-ask   { color: var(--ask);   border-color: color-mix(in srgb, var(--ask) 45%, transparent);   background: color-mix(in srgb, var(--ask) 14%, transparent); }
-.badge-webiq { color: var(--webiq); border-color: color-mix(in srgb, var(--webiq) 45%, transparent); background: color-mix(in srgb, var(--webiq) 14%, transparent); }
-.badge-tool  { color: var(--tool);  border-color: color-mix(in srgb, var(--tool) 45%, transparent);  background: color-mix(in srgb, var(--tool) 16%, transparent); }
+.badge-ask   { color: var(--ask-ink);   border-color: color-mix(in srgb, var(--ask) 45%, transparent);   background: color-mix(in srgb, var(--ask) 14%, transparent); }
+.badge-webiq { color: var(--webiq-ink); border-color: color-mix(in srgb, var(--webiq) 45%, transparent); background: color-mix(in srgb, var(--webiq) 14%, transparent); }
+.badge-tool  { color: var(--tool-ink);  border-color: color-mix(in srgb, var(--tool) 45%, transparent);  background: color-mix(in srgb, var(--tool) 16%, transparent); }
 .step-desc { color: var(--muted); font-size: 12.5px; margin: 8px 0 10px; }
 
 .btn {
@@ -179,9 +211,9 @@ body {
 .kpi { flex: 1; min-width: 90px; background: var(--bg); border: 1px solid var(--line); border-radius: 9px; padding: 8px 10px; }
 .kpi-label { color: var(--muted); font-size: 11px; }
 .kpi-val { font-size: 18px; font-weight: 700; }
-.kpi-val.blue { color: var(--ask); }
-.kpi-val.green { color: var(--tool); }
-.linklike { color: var(--ask); cursor: pointer; text-decoration: underline; font-size: 12px; }
+.kpi-val.blue { color: var(--ask-ink); }
+.kpi-val.green { color: var(--tool-ink); }
+.linklike { color: var(--ask-ink); cursor: pointer; text-decoration: underline; font-size: 12px; }
 
 .hotel-card { background: var(--bg); border: 2px solid var(--webiq); border-radius: 10px; padding: 12px; }
 .hotel-card h4 { margin: 2px 0; font-size: 15px; }
@@ -280,9 +312,9 @@ body {
 .call.TOOL { border-left-color: var(--tool); }
 .call-top { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
 .call-type { font-weight: 700; font-size: 12px; }
-.call.ASK .call-type { color: var(--ask); }
-.call.WEBIQ .call-type { color: var(--webiq); }
-.call.TOOL .call-type { color: var(--tool); }
+.call.ASK .call-type { color: var(--ask-ink); }
+.call.WEBIQ .call-type { color: var(--webiq-ink); }
+.call.TOOL .call-type { color: var(--tool-ink); }
 .badge { font-size: 10.5px; font-weight: 700; padding: 2px 7px; border-radius: 999px; letter-spacing: .03em; }
 .badge.LIVE { background: rgba(46,204,113,.18); color: #8ff0b5; border: 1px solid var(--tool); }
 .badge.CAPTURED { background: rgba(242,177,60,.16); color: #ffd98c; border: 1px solid var(--amber); }
@@ -312,3 +344,29 @@ body {
   .layout { grid-template-columns: 1fr; grid-template-rows: auto 60vh auto; }
   .rail { max-height: none; }
 }
+
+/* ---------- Light theme overrides ----------
+   Targeted fixes for rules that previously baked in pale light-on-dark colours.
+   These only take effect under [data-theme="light"]; everything else is handled
+   by the re-mapped variables at the top of the file. */
+:root[data-theme="light"] .mode-chip.live { color: var(--tool-ink); }
+:root[data-theme="light"] .mode-chip.captured { color: var(--amber-ink); }
+:root[data-theme="light"] .mode-chip.demo-pill.demo-on { color: var(--ask-ink); }
+:root[data-theme="light"] .mode-chip.demo-pill.live-only { color: var(--tool-ink); }
+
+:root[data-theme="light"] .badge.LIVE { color: var(--tool-ink); }
+:root[data-theme="light"] .badge.CAPTURED { color: var(--amber-ink); }
+:root[data-theme="light"] .badge.PREVIEW { color: var(--ask-ink); }
+:root[data-theme="light"] .badge.fallback,
+:root[data-theme="light"] .badge.error { color: var(--red-ink); }
+
+:root[data-theme="light"] .banner-fallback { color: var(--red-ink); }
+:root[data-theme="light"] .banner-live { color: var(--tool-ink); }
+
+:root[data-theme="light"] .call-site { color: var(--muted); }
+:root[data-theme="light"] .call-req pre { color: var(--text); }
+:root[data-theme="light"] .chat-msg.assistant .chat-md strong { color: var(--text); }
+
+/* Map: lighten the tile-loading backdrop and the floating legend chrome. */
+:root[data-theme="light"] #map { background: #e6eaf0; }
+:root[data-theme="light"] .map-legend { background: rgba(255, 255, 255, .92); }
