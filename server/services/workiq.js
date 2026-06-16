@@ -19,6 +19,9 @@ import { parseReceipts } from "./receiptParser.js";
 
 const CALL_SITE = "services/workiq.js \u2192 askWorkIQ()";
 
+// =============================================================================
+//  QUERY (PROMPT) — the single natural-language question sent to WorkIQ Ask.
+// =============================================================================
 // The exact prompt sent to WorkIQ. We request STRICT JSON to keep the live path
 // reliable; the parser also tolerates prose if WorkIQ answers conversationally.
 export const WORKIQ_PROMPT = [
@@ -28,11 +31,6 @@ export const WORKIQ_PROMPT = [
   '{ "date": "YYYY-MM-DD", "time": "HH:MM", "pickupAddress": "...",',
   '  "dropoffAddress": "...", "total": <number, final amount incl. tip> }.',
 ].join(" ");
-
-async function loadCaptured() {
-  const raw = await fs.readFile(path.join(CAPTURED_DIR, "uber-receipts.json"), "utf8");
-  return JSON.parse(raw);
-}
 
 // The WorkIQ "ask" tool returns its answer inside a JSON envelope:
 //   {"response": "<actual answer text>", "conversationId": "..."}
@@ -53,6 +51,12 @@ function unwrapWorkIQAnswer(text) {
   }
   return out;
 }
+
+// =============================================================================
+//  LIVE PATH — the real WorkIQ Ask call. This is what runs in normal
+//  ("live"/"auto") operation. Captured data (further below) is touched ONLY if
+//  this fails or times out.
+// =============================================================================
 
 // -----------------------------------------------------------------------------
 //  THE LIVE WORKIQ CALL. Speaks MCP (stdio) to a configured WorkIQ MCP server
@@ -153,6 +157,49 @@ export async function prewarmWorkIQ() {
   }
 }
 
+// =============================================================================
+//  CAPTURED FALLBACK  (reliability net — NOT the primary path)
+//  Replays a real WorkIQ Ask answer captured for the demo, stored in
+//  server/data/captured/uber-receipts.json. It runs ONLY when:
+//    • WORKIQ_MODE=captured (explicit offline demo), or
+//    • the live Ask fails/times out under WORKIQ_MODE=auto.
+//  A real production app would not ship this; it exists so the demo never
+//  dead-ends on stage when the mailbox/MCP call is slow or unavailable.
+// =============================================================================
+async function loadCaptured() {
+  const raw = await fs.readFile(path.join(CAPTURED_DIR, "uber-receipts.json"), "utf8");
+  return JSON.parse(raw);
+}
+
+async function replayCapturedReceipts({ startedMs, status, detail }) {
+  const data = await loadCaptured();
+  logCall({
+    type: "ASK",
+    title: "WorkIQ Ask",
+    mode: "CAPTURED",
+    callSite: CALL_SITE,
+    request: WORKIQ_PROMPT,
+    responseSummary: `${data.rides.length} ride receipts (captured sample dataset)`,
+    durationMs: Date.now() - startedMs,
+    status,
+    detail,
+  });
+  return {
+    rides: data.rides,
+    mode: "CAPTURED",
+    status,
+    rawText: data.rawText,
+    parser: "captured",
+    prompt: WORKIQ_PROMPT,
+    detail: detail || "",
+  };
+}
+
+// =============================================================================
+//  ORCHESTRATOR — decides live vs. captured, then delegates. The captured path
+//  is only ever reached via the mode switch or the catch block below.
+// =============================================================================
+
 /**
  * Ask WorkIQ for the user's Uber receipts.
  * @param {object} [opts]
@@ -164,31 +211,9 @@ export async function askWorkIQ(opts = {}) {
   const mode = (opts.mode || config.workiq.mode || "captured").toLowerCase();
   const started = Date.now();
 
-  const useCaptured = async (status, detail) => {
-    const data = await loadCaptured();
-    logCall({
-      type: "ASK",
-      title: "WorkIQ Ask",
-      mode: "CAPTURED",
-      callSite: CALL_SITE,
-      request: WORKIQ_PROMPT,
-      responseSummary: `${data.rides.length} ride receipts (captured sample dataset)`,
-      durationMs: Date.now() - started,
-      status,
-      detail,
-    });
-    return {
-      rides: data.rides,
-      mode: "CAPTURED",
-      status,
-      rawText: data.rawText,
-      parser: "captured",
-      prompt: WORKIQ_PROMPT,
-      detail: detail || "",
-    };
-  };
-
-  if (mode === "captured") return useCaptured("ok", "Captured mode (configured).");
+  if (mode === "captured") {
+    return replayCapturedReceipts({ startedMs: started, status: "ok", detail: "Captured mode (configured)." });
+  }
 
   // live or auto -> attempt the real WorkIQ call.
   try {
@@ -225,6 +250,10 @@ export async function askWorkIQ(opts = {}) {
       throw e;
     }
     // auto -> loud, visible fallback to captured.
-    return useCaptured("fallback", `Live WorkIQ failed, replayed captured data. Reason: ${err.message}`);
+    return replayCapturedReceipts({
+      startedMs: started,
+      status: "fallback",
+      detail: `Live WorkIQ failed, replayed captured data. Reason: ${err.message}`,
+    });
   }
 }

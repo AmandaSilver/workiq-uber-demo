@@ -203,7 +203,15 @@ function showError(resId, prefix, err) {
   el.hidden = false;
   el.innerHTML = `<div class="banner-fallback"><b>${escapeHtml(prefix)}</b><br>${escapeHtml(err.message || String(err))}</div>`;
 }
+function demoModeOn() {
+  const el = $("#chk-demo-mode");
+  return el ? el.checked : true;
+}
 function modeOverride(kind) {
+  // Demo mode OFF = run the real, live-only code path that a production app would
+  // ship. The captured-fallback branches in workiq.js / webiq.js are never reached,
+  // so failures surface loudly instead of being masked by replayed data.
+  if (!demoModeOn() && (kind === "workiq" || kind === "webiq")) return "live";
   const v = $(`#sel-${kind}`).value;
   return v || undefined;
 }
@@ -571,20 +579,63 @@ function setRailVisible(visible) {
 
 $("#btn-toggle-log").addEventListener("click", () => setRailVisible(!railVisible));
 $("#btn-collapse-log").addEventListener("click", () => setRailVisible(false));
+let lastConfig = null;
+function renderModeChips() {
+  const c = lastConfig;
+  if (!c) return;
+  const demo = demoModeOn();
+  const chip = (id, label, mode, liveConfigured) => {
+    const el = $(id);
+    // With demo mode off, WorkIQ/WebIQ are forced live — reflect that in the chip
+    // rather than showing the server's configured (auto/captured) default.
+    const eff = demo ? mode : "live";
+    el.innerHTML = `${label}: <b>${eff}</b>`;
+    el.classList.toggle("live", eff === "live");
+    el.classList.toggle("captured", eff === "captured");
+    el.title = !demo
+      ? "Demo mode off — forced live (captured fallback disabled)"
+      : liveConfigured === false
+      ? "Live path not configured (will use captured)"
+      : "";
+  };
+  chip("#chip-workiq", "WorkIQ", c.workiqMode, c.workiqLiveConfigured);
+  chip("#chip-webiq", "WebIQ", c.webiqMode, c.webiqLiveConfigured);
+  $("#chip-mail").innerHTML = `Mail: <b>${c.mailMode}</b>`;
+}
 async function refreshConfig() {
   try {
-    const c = await api("/api/config");
-    const chip = (id, label, mode, liveConfigured) => {
-      const el = $(id);
-      el.innerHTML = `${label}: <b>${mode}</b>`;
-      el.classList.toggle("live", mode === "live");
-      el.classList.toggle("captured", mode === "captured");
-      el.title = liveConfigured === false ? "Live path not configured (will use captured)" : "";
-    };
-    chip("#chip-workiq", "WorkIQ", c.workiqMode, c.workiqLiveConfigured);
-    chip("#chip-webiq", "WebIQ", c.webiqMode, c.webiqLiveConfigured);
-    $("#chip-mail").innerHTML = `Mail: <b>${c.mailMode}</b>`;
+    lastConfig = await api("/api/config");
+    renderModeChips();
   } catch { /* ignore */ }
+}
+
+// Master "Demo mode" toggle. ON (default) = captured fallbacks allowed so the demo
+// never stalls. OFF = live-only, the exact code path a real app runs (no fallback).
+// This makes the demo-vs-production distinction explicit for anyone reading the code.
+function applyDemoModeUI() {
+  const on = demoModeOn();
+  const pill = $("#chip-demo");
+  if (pill) {
+    pill.classList.toggle("demo-on", on);
+    pill.classList.toggle("live-only", !on);
+    pill.textContent = on ? "🎬 Demo mode" : "🔴 Live only";
+    pill.title = on
+      ? "Demo mode: if a live call fails, the app replays captured results so the demo never stalls."
+      : "Live only: WorkIQ Ask + WebIQ run the real code path with no captured fallback.";
+  }
+  const hint = $("#demo-mode-hint");
+  if (hint) {
+    hint.innerHTML = on
+      ? "On: if a live call fails, the app replays captured results (<code>replayCaptured…()</code>) so the demo never stalls."
+      : "Off: WorkIQ Ask &amp; WebIQ run the live-only path a production app would use — the captured-fallback branch is never taken.";
+  }
+  // Demo off forces WorkIQ/WebIQ to live, so lock those per-call selectors.
+  ["#sel-workiq", "#sel-webiq"].forEach((sel) => {
+    const el = $(sel);
+    if (el) el.disabled = !on;
+  });
+  renderModeChips();
+  try { localStorage.setItem("wiq-demo-mode", on ? "1" : "0"); } catch { /* ignore */ }
 }
 
 function timeAgo(iso) {
@@ -634,6 +685,16 @@ async function refreshCallLog() {
 
 setStep(1, "active");
 refreshConfig();
+(() => {
+  const el = $("#chk-demo-mode");
+  if (el) {
+    try {
+      if (localStorage.getItem("wiq-demo-mode") === "0") el.checked = false;
+    } catch { /* ignore */ }
+    el.addEventListener("change", applyDemoModeUI);
+  }
+  applyDemoModeUI();
+})();
 setRailTab("chat");
 setRailVisible(railVisible);
 refreshCallLog();

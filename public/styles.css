@@ -65,6 +65,33 @@ body {
   background: var(--bg); color: var(--text); border: 1px solid var(--line);
   border-radius: 6px; padding: 6px 8px; font-size: 13px;
 }
+.presenter-panel select:disabled { opacity: .45; cursor: not-allowed; }
+
+/* Demo-mode master toggle */
+.demo-mode-row { display: flex; flex-direction: column; gap: 8px; padding-bottom: 10px; border-bottom: 1px solid var(--line); }
+.presenter-panel label.switch { flex-direction: row; align-items: center; gap: 9px; cursor: pointer; font-size: 13px; color: var(--text); }
+.switch input { position: absolute; opacity: 0; width: 0; height: 0; }
+.switch-track {
+  position: relative; flex: none; width: 38px; height: 22px; border-radius: 999px;
+  background: var(--line); transition: background .15s ease;
+}
+.switch-thumb {
+  position: absolute; top: 2px; left: 2px; width: 18px; height: 18px;
+  border-radius: 50%; background: #fff; transition: transform .15s ease;
+}
+.switch input:checked + .switch-track { background: var(--ask); }
+.switch input:checked + .switch-track .switch-thumb { transform: translateX(16px); }
+.switch input:focus-visible + .switch-track { outline: 2px solid var(--ask); outline-offset: 2px; }
+.presenter-hint { margin: 0; font-size: 11px; line-height: 1.45; color: var(--muted); }
+.presenter-hint code {
+  background: var(--bg); border: 1px solid var(--line); border-radius: 4px;
+  padding: 0 4px; font-size: 10px;
+}
+
+/* Header demo-mode pill */
+.mode-chip.demo-pill { cursor: default; font-weight: 600; }
+.mode-chip.demo-pill.demo-on { border-color: var(--ask); color: #bcd9ff; }
+.mode-chip.demo-pill.live-only { border-color: var(--tool); color: #bff3d2; }
 
 /* ---------- Layout ---------- */
 .layout {

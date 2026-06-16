@@ -19,11 +19,47 @@ import { geocode } from "./geocode.js";
 
 const CALL_SITE = "services/webiq.js \u2192 searchHotels()";
 
-async function loadCapturedHotels() {
-  const raw = await fs.readFile(path.join(CAPTURED_DIR, "hotels.json"), "utf8");
-  return JSON.parse(raw);
-}
+// =============================================================================
+//  DEMO-LOCALE CONSTANTS
+//  The single place this demo is hardcoded to San Francisco. In a real app these
+//  would be derived from the user/trip (e.g. geocode the city, read radius from
+//  config) rather than baked in. Centralized here so they're easy to find/change.
+// =============================================================================
+const CITY = "San Francisco, CA";
+const SEARCH_RADIUS_M = 3000; // metres around the trip centroid to search
+// Approx. centroid of downtown SF (Union Square); used only to pre-warm the
+// keyless Overpass mirror at startup so the FIRST live demo click isn't slow.
+const SF_DOWNTOWN = { lat: 37.78905, lng: -122.403214 };
 
+// OpenStreetMap rarely tags a hotel's `stars`, so we identify genuine 5-star
+// properties by well-known luxury brands/names. Word-boundary matched so e.g.
+// "CW Hotel" doesn't match "W Hotel". This is the curated 5-star whitelist.
+const FIVE_STAR_RE = new RegExp(
+  "\\b(" +
+    [
+      "ritz[\\s-]?carlton", "st\\.?\\s*regis", "four seasons", "fairmont",
+      "mandarin oriental", "waldorf astoria", "the peninsula", "peninsula hotel",
+      "intercontinental", "loews regency", "palace hotel", "the palace",
+      "1 hotel", "taj",
+    ].join("|") +
+    ")\\b",
+  "i"
+);
+
+// Public Overpass instances are flaky (frequent 504s) but usually succeed on a
+// retry or a sibling mirror. We cycle through these within the overall budget.
+const OVERPASS_ENDPOINTS = [
+  "https://overpass-api.de/api/interpreter",
+  "https://overpass.kumi.systems/api/interpreter",
+  "https://maps.mail.ru/osm/tools/overpass/api/interpreter",
+  "https://overpass.private.coffee/api/interpreter",
+  "https://overpass.osm.ch/api/interpreter",
+];
+
+// -----------------------------------------------------------------------------
+//  QUERY BUILDING — the natural-language search query is constructed in exactly
+//  one place so the demo can point at "this is what we asked the web".
+// -----------------------------------------------------------------------------
 function buildQuery(centroid, stars = 5) {
   const area = labelNeighborhood(centroid);
   const lux = stars >= 5 ? " luxury" : "";
@@ -35,6 +71,12 @@ function clampStars(s) {
   const n = Math.round(Number(s));
   return Number.isFinite(n) && n >= 1 && n <= 5 ? n : 5;
 }
+
+// =============================================================================
+//  LIVE PATH — the real web search. This is what runs in normal ("live"/"auto")
+//  operation. Captured data (further below) is touched ONLY if this fails or
+//  times out. Two providers: a keyed web-search API, or keyless OSM Overpass.
+// =============================================================================
 
 // -----------------------------------------------------------------------------
 //  THE LIVE WEB SEARCH CALL. Uses Bing Web Search v7 or SerpApi if a key is set.
@@ -79,12 +121,12 @@ async function resultsToHotels(results, stars = 5) {
   for (const r of results.slice(0, 6)) {
     const name = (r.name || "").split(/[|\u2013\u2014\-:]/)[0].trim();
     if (!name || !/hotel|ritz|regis|four seasons|palace|fairmont|st\.?\s*regis|taj/i.test(r.name || "")) continue;
-    const g = await geocode(`${name}, San Francisco, CA`);
+    const g = await geocode(`${name}, ${CITY}`);
     if (!g) continue;
     hotels.push({
       id: name.toLowerCase().replace(/[^a-z0-9]+/g, "-"),
       name,
-      address: "San Francisco, CA",
+      address: CITY,
       lat: g.lat,
       lng: g.lng,
       stars,
@@ -95,31 +137,6 @@ async function resultsToHotels(results, stars = 5) {
   }
   return hotels;
 }
-
-// OpenStreetMap rarely tags a hotel's `stars`, so we identify genuine 5-star
-// properties by well-known luxury brands/names. Word-boundary matched so e.g.
-// "CW Hotel" doesn't match "W Hotel". This is the curated 5-star whitelist.
-const FIVE_STAR_RE = new RegExp(
-  "\\b(" +
-    [
-      "ritz[\\s-]?carlton", "st\\.?\\s*regis", "four seasons", "fairmont",
-      "mandarin oriental", "waldorf astoria", "the peninsula", "peninsula hotel",
-      "intercontinental", "loews regency", "palace hotel", "the palace",
-      "1 hotel", "taj",
-    ].join("|") +
-    ")\\b",
-  "i"
-);
-
-// Public Overpass instances are flaky (frequent 504s) but usually succeed on a
-// retry or a sibling mirror. We cycle through these within the overall budget.
-const OVERPASS_ENDPOINTS = [
-  "https://overpass-api.de/api/interpreter",
-  "https://overpass.kumi.systems/api/interpreter",
-  "https://maps.mail.ru/osm/tools/overpass/api/interpreter",
-  "https://overpass.private.coffee/api/interpreter",
-  "https://overpass.osm.ch/api/interpreter",
-];
 
 // POST an Overpass QL query, retrying across mirrors until it succeeds or the
 // overall time budget runs out. Throws only if every attempt failed.
@@ -168,11 +185,10 @@ async function overpassFetch(ql, totalTimeoutMs) {
 //  to captured data.
 // -----------------------------------------------------------------------------
 async function overpassHotels(centroid, timeoutMs, stars = 5) {
-  const radius = 3000; // metres around the centroid
   const ql =
     "[out:json][timeout:12];(" +
-    `node["tourism"="hotel"](around:${radius},${centroid.lat},${centroid.lng});` +
-    `way["tourism"="hotel"](around:${radius},${centroid.lat},${centroid.lng});` +
+    `node["tourism"="hotel"](around:${SEARCH_RADIUS_M},${centroid.lat},${centroid.lng});` +
+    `way["tourism"="hotel"](around:${SEARCH_RADIUS_M},${centroid.lat},${centroid.lng});` +
     ");out center tags 80;";
   const data = await overpassFetch(ql, timeoutMs);
   const seen = new Set();
@@ -197,7 +213,7 @@ async function overpassHotels(centroid, timeoutMs, stars = 5) {
     hotels.push({
       id,
       name,
-      address: street ? `${street}, San Francisco, CA` : "San Francisco, CA",
+      address: street ? `${street}, ${CITY}` : CITY,
       lat,
       lng,
       stars: resolvedStars,
@@ -208,10 +224,6 @@ async function overpassHotels(centroid, timeoutMs, stars = 5) {
   }
   return hotels;
 }
-
-// Approx. centroid of downtown San Francisco (Union Square), used only to warm
-// the Overpass mirror at startup so the first live demo click isn't slow.
-const SF_DOWNTOWN = { lat: 37.78905, lng: -122.403214 };
 
 /**
  * Pre-warm the keyless live WebIQ path at startup so the FIRST demo click is fast.
@@ -233,6 +245,52 @@ export async function prewarmWebIQ() {
   }
 }
 
+// =============================================================================
+//  CAPTURED FALLBACK  (reliability net — NOT the primary path)
+//  Everything below replays real hotel results previously retrieved for the demo
+//  locale, stored in server/data/captured/hotels.json. It runs ONLY when:
+//    • WEBIQ_MODE=captured (explicit offline demo), or
+//    • a live search fails/times out under WEBIQ_MODE=auto.
+//  A real production app would typically drop this section entirely (or replace
+//  it with a cache); it exists here purely so the demo never dead-ends on stage.
+// =============================================================================
+async function loadCapturedHotels() {
+  const raw = await fs.readFile(path.join(CAPTURED_DIR, "hotels.json"), "utf8");
+  return JSON.parse(raw);
+}
+
+// Replay captured hotels at the requested tier, ranked nearest-first. If the
+// captured dataset has nothing at that tier, fall back to all hotels so the demo
+// always returns something mappable (with a note explaining the substitution).
+async function replayCapturedHotels({ centroid, stars, query, startedMs, status, detail }) {
+  const data = await loadCapturedHotels();
+  let pool = data.hotels.filter((h) => Number(h.stars) === stars);
+  let tierNote = "";
+  if (pool.length === 0) {
+    pool = data.hotels;
+    tierNote = ` No ${stars}-star match in captured data; showing nearest available tier.`;
+  }
+  const ranked = rankHotelsByDistance(pool, centroid);
+  const fullDetail = ((detail || "") + tierNote).trim();
+  logCall({
+    type: "WEBIQ",
+    title: "WebIQ Search",
+    mode: "CAPTURED",
+    callSite: CALL_SITE,
+    request: query,
+    responseSummary: `${ranked.length} ${stars}-star hotels (captured) \u2014 nearest: ${ranked[0]?.name}`,
+    durationMs: Date.now() - startedMs,
+    status,
+    detail: fullDetail,
+  });
+  return { hotels: ranked, mode: "CAPTURED", status, query, detail: fullDetail, stars };
+}
+
+// =============================================================================
+//  ORCHESTRATOR — decides live vs. captured, then delegates. The captured path
+//  is only ever reached via the mode switch or the catch block below.
+// =============================================================================
+
 /**
  * Find hotels near the centroid at a requested star tier, ranked nearest-first.
  * @param {{lat:number,lng:number}} centroid
@@ -247,33 +305,9 @@ export async function searchHotels(centroid, opts = {}) {
   const query = buildQuery(centroid, stars);
   const started = Date.now();
 
-  const useCaptured = async (status, detail) => {
-    const data = await loadCapturedHotels();
-    // Prefer the requested tier; if the captured dataset has nothing at that
-    // tier, fall back to all hotels so the demo always returns something
-    // mappable (with a note explaining the substitution).
-    let pool = data.hotels.filter((h) => Number(h.stars) === stars);
-    let tierNote = "";
-    if (pool.length === 0) {
-      pool = data.hotels;
-      tierNote = ` No ${stars}-star match in captured data; showing nearest available tier.`;
-    }
-    const ranked = rankHotelsByDistance(pool, centroid);
-    logCall({
-      type: "WEBIQ",
-      title: "WebIQ Search",
-      mode: "CAPTURED",
-      callSite: CALL_SITE,
-      request: query,
-      responseSummary: `${ranked.length} ${stars}-star hotels (captured) \u2014 nearest: ${ranked[0]?.name}`,
-      durationMs: Date.now() - started,
-      status,
-      detail: ((detail || "") + tierNote).trim(),
-    });
-    return { hotels: ranked, mode: "CAPTURED", status, query, detail: ((detail || "") + tierNote).trim(), stars };
-  };
-
-  if (mode === "captured") return useCaptured("ok", "Captured mode (configured).");
+  if (mode === "captured") {
+    return replayCapturedHotels({ centroid, stars, query, startedMs: started, status: "ok", detail: "Captured mode (configured)." });
+  }
 
   try {
     // Prefer a real web-search provider when a key is configured; otherwise use
@@ -319,6 +353,14 @@ export async function searchHotels(centroid, opts = {}) {
       e.code = "WEBIQ_LIVE_FAILED";
       throw e;
     }
-    return useCaptured("fallback", `Live web search failed, replayed captured hotels. Reason: ${err.message}`);
+    // auto -> the failure path that reaches captured data.
+    return replayCapturedHotels({
+      centroid,
+      stars,
+      query,
+      startedMs: started,
+      status: "fallback",
+      detail: `Live web search failed, replayed captured hotels. Reason: ${err.message}`,
+    });
   }
 }
