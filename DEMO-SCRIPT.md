@@ -15,7 +15,7 @@ on your behalf), with **WebIQ** in the middle for an open‑web search.
 1. **Start the app**
 
 ```javascript
-  cd workiq-trip-planner
+cd workiq-trip-planner
    npm start            # → http://localhost:4317
 ```
 
@@ -35,13 +35,11 @@ on your behalf), with **WebIQ** in the middle for an open‑web search.
    Leave **WorkIQ Ask** and **WebIQ** on **auto** — both run live by default and
    silently fall back to the sample if the live call is slow or finds nothing.
 
-    - **WorkIQ Ask** reads your real mailbox (≈30s on a cold call; the app pre‑warms
-     the connection at startup so the first demo click is fast).
-    - **WebIQ** runs live with **no API key** — it queries OpenStreetMap for nearby
+**WorkIQ Ask** reads your real mailbox (≈30s on a cold call; the app pre‑warms
+     the connection at startup so the first demo click is fast).**WebIQ** runs live with **no API key** — it queries OpenStreetMap for nearby
      luxury hotels. The public endpoint is occasionally rate‑limited; on a miss it
      falls back to the captured hotel so the demo never stalls. (Add a
-     `BING_SEARCH_KEY` or `SERPAPI_KEY` to `.env` for a rock‑solid live path.)
-    - **Mail** is pinned to `draft` — it only ever **saves to Drafts**, never sends.
+     `BING_SEARCH_KEY` or `SERPAPI_KEY` to `.env` for a rock‑solid live path.)**Mail** is pinned to `draft` — it only ever **saves to Drafts**, never sends.
 
 > If anything looks stale between runs, click the **✕** on the panel or hit
 > **Reset** — every step returns to the start.
@@ -94,6 +92,12 @@ on the right\*\*, which now shows a synthesized answer:
 > **Note:** the hotel is a **live** result, so the exact name/distance varies run to
 > run (e.g. Taj Campton Place, \~0.18 mi). If the live call is rate‑limited it quietly
 > shows the captured hotel instead — either way the card renders cleanly.
+
+> **Adaptable tier (optional flourish):** the star rating isn't hard‑wired. Type
+> `find me a 3-star hotel` (or `what about a 4-star?`) into the chat and WebIQ
+> re‑searches at that tier — the card relabels to *"Best 3‑star hotel…"* and the map
+> re‑pins. Live OSM only reliably tags luxury brands, so non‑5‑star tiers fall back to
+> the captured San Francisco hotel set (3/4/5‑star) — still real hotels, always on‑map.
 
 ### ▶ Step 5 — **Tools**: take a real action  ⭐ the payoff
 

@@ -158,7 +158,7 @@ function drawCentroid(reco) {
   if (!reco) return;
   const icon = L.divIcon({ className: "", html: '<div class="centroid-icon">📍</div>', iconSize: [22, 22], iconAnchor: [11, 22] });
   L.marker([reco.centroid.lat, reco.centroid.lng], { icon, zIndexOffset: 500 })
-  .bindPopup(`<b>Recommended stay area</b><br>${reco.neighborhood}<br><i>medoid of ${reco.pointCount} clustered ride points</i>`)
+    .bindPopup(`<b>Recommended stay area</b><br>${reco.neighborhood}<br><i>center of ${reco.pointCount} in-city ride points</i>`)
     .addTo(layers.centroid)
     .openPopup();
   L.circle([reco.centroid.lat, reco.centroid.lng], { radius: 500, color: "#2ecc71", weight: 1, fillOpacity: 0.06 }).addTo(layers.centroid);
@@ -177,7 +177,7 @@ function drawHotels(hotels) {
     L.marker([h.lat, h.lng], { icon, zIndexOffset: best ? 400 : 200 })
       .bindPopup(
         `<b>${h.name}</b>${best ? " ⭐ closest" : ""}<br>${h.address}<br>${
-          h.distanceMiles != null ? `${h.distanceMiles} mi from recommended base` : ""
+          h.distanceMiles != null ? `${h.distanceMiles} mi from center` : ""
         }${h.nightlyRateUSD ? ` &middot; from $${h.nightlyRateUSD}/night` : ""}<br><a href="${h.url}" target="_blank">website</a>`
       )
       .addTo(layers.hotels);
@@ -324,7 +324,7 @@ $("#btn-reco").addEventListener("click", async () => {
       <div class="hotel-card" style="border-color:#2ecc71">
         <div class="kpi-label">Recommended stay area</div>
         <h4 style="color:#2ecc71">${r.neighborhood}</h4>
-        <div class="meta">DBSCAN + medoid from ${r.pointCount} clustered in-city ride endpoint(s).<br>
+        <div class="meta">Geographic center of ${r.pointCount} in-city ride endpoints.<br>
         Excluded ${r.excludedRideIds.length} airport transfer(s): ${r.excludedRideIds.join(", ") || "none"}.</div>
       </div>`;
     setStep(3, "done"); setStep(4, "active");
@@ -342,11 +342,12 @@ function renderHotels(data) {
   const top = data.recommendedHotel;
   const res = $("#res-hotels");
   res.hidden = false;
+  const starN = top.stars || data.stars || 5;
   res.innerHTML = `
     <div class="hotel-card">
-      <div class="kpi-label" style="color:#b76bff">⭐ Best 5-star hotel near your recommended base</div>
+      <div class="kpi-label" style="color:#b76bff">⭐ Best ${starN}-star hotel near your trip's center</div>
       <h4>${top.name}</h4>
-      <div class="meta">${top.address}<br>${top.distanceMiles} mi from your recommended base${top.nightlyRateUSD ? ` · from $${top.nightlyRateUSD}/night` : ""}</div>
+      <div class="meta">${top.address}<br>${top.distanceMiles} mi from your trip's center${top.nightlyRateUSD ? ` · from $${top.nightlyRateUSD}/night` : ""}</div>
       <a class="linklike" href="${top.url}" target="_blank">Open hotel website →</a>
     </div>
     <ul class="hotel-list">

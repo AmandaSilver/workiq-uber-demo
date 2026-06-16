@@ -3,10 +3,11 @@
 //
 //      🟣🟣🟣   W E B I Q   ( W E B   S E A R C H )   B O U N D A R Y   🟣🟣🟣
 //
-//   This module is where the app searches the public web for the best 5-star
-//   hotel closest to the recommended stay area. The live call site is
-//   `callLiveWebSearch()`. Captured mode replays real hotel results retrieved
-//   for downtown San Francisco so the demo is reliable offline.
+//   This module is where the app searches the public web for the best hotel
+//   (at a requested star tier, default 5-star) closest to the recommended stay
+//   area. The live call site is `callLiveWebSearch()`. Captured mode replays
+//   real hotel results across star tiers retrieved for downtown San Francisco so
+//   the demo is reliable offline.
 //
 // =============================================================================
 import fs from "node:fs/promises";
@@ -23,9 +24,16 @@ async function loadCapturedHotels() {
   return JSON.parse(raw);
 }
 
-function buildQuery(centroid) {
+function buildQuery(centroid, stars = 5) {
   const area = labelNeighborhood(centroid);
-  return `best 5-star luxury hotels near ${area}`;
+  const lux = stars >= 5 ? " luxury" : "";
+  return `best ${stars}-star${lux} hotels near ${area}`;
+}
+
+// Clamp an incoming star request to a sane 1-5 integer (default 5).
+function clampStars(s) {
+  const n = Math.round(Number(s));
+  return Number.isFinite(n) && n >= 1 && n <= 5 ? n : 5;
 }
 
 // -----------------------------------------------------------------------------
@@ -66,7 +74,7 @@ async function callLiveWebSearch(query) {
 }
 
 // Turn fuzzy web results into mappable hotel candidates by geocoding their names.
-async function resultsToHotels(results) {
+async function resultsToHotels(results, stars = 5) {
   const hotels = [];
   for (const r of results.slice(0, 6)) {
     const name = (r.name || "").split(/[|\u2013\u2014\-:]/)[0].trim();
@@ -79,7 +87,7 @@ async function resultsToHotels(results) {
       address: "San Francisco, CA",
       lat: g.lat,
       lng: g.lng,
-      stars: 5,
+      stars,
       nightlyRateUSD: null,
       url: r.url,
       highlights: r.snippet || "",
@@ -108,6 +116,9 @@ const FIVE_STAR_RE = new RegExp(
 const OVERPASS_ENDPOINTS = [
   "https://overpass-api.de/api/interpreter",
   "https://overpass.kumi.systems/api/interpreter",
+  "https://maps.mail.ru/osm/tools/overpass/api/interpreter",
+  "https://overpass.private.coffee/api/interpreter",
+  "https://overpass.osm.ch/api/interpreter",
 ];
 
 // POST an Overpass QL query, retrying across mirrors until it succeeds or the
@@ -119,7 +130,7 @@ async function overpassFetch(ql, totalTimeoutMs) {
   while (Date.now() < deadline) {
     const endpoint = OVERPASS_ENDPOINTS[attempt % OVERPASS_ENDPOINTS.length];
     attempt++;
-    const perTry = Math.min(6000, deadline - Date.now());
+    const perTry = Math.min(7000, deadline - Date.now());
     if (perTry < 1500) break; // not enough time left for a meaningful attempt
     const ctrl = new AbortController();
     const t = setTimeout(() => ctrl.abort(), perTry);
@@ -148,10 +159,15 @@ async function overpassFetch(ql, totalTimeoutMs) {
 //  KEYLESS LIVE FALLBACK: query the OpenStreetMap Overpass API for real hotels
 //  near the trip centroid (no API key required, same public-data spirit as the
 //  Nominatim geocoder). OSM hotels come WITH coordinates, so no extra geocoding
-//  is needed. We keep only curated 5-star luxury brands. Throws on transport
-//  errors so the caller can fall back to captured data.
+//  is needed.
+//
+//  Star filtering: OSM rarely tags luxury properties with `stars`, so for a
+//  5-star request we keep the curated luxury-brand whitelist OR an explicit
+//  stars=5 tag. For other tiers (3-star, 4-star, …) we trust OSM's `stars` tag
+//  with an exact match. Throws on transport errors so the caller can fall back
+//  to captured data.
 // -----------------------------------------------------------------------------
-async function overpassLuxuryHotels(centroid, timeoutMs) {
+async function overpassHotels(centroid, timeoutMs, stars = 5) {
   const radius = 3000; // metres around the centroid
   const ql =
     "[out:json][timeout:12];(" +
@@ -163,13 +179,20 @@ async function overpassLuxuryHotels(centroid, timeoutMs) {
   const hotels = [];
   for (const el of data.elements || []) {
     const name = el.tags?.name;
-    if (!name || !FIVE_STAR_RE.test(name)) continue;
+    if (!name) continue;
+    const osmStars = parseInt(el.tags.stars, 10);
+    const matches =
+      stars >= 5
+        ? FIVE_STAR_RE.test(name) || osmStars === 5 // luxury brands rarely carry a stars tag
+        : osmStars === stars; // other tiers: exact OSM stars-tag match
+    if (!matches) continue;
     const lat = el.lat ?? el.center?.lat;
     const lng = el.lon ?? el.center?.lon;
     if (typeof lat !== "number" || typeof lng !== "number") continue;
     const id = name.toLowerCase().replace(/[^a-z0-9]+/g, "-");
     if (seen.has(id)) continue;
     seen.add(id);
+    const resolvedStars = Number.isFinite(osmStars) ? osmStars : stars;
     const street = [el.tags["addr:housenumber"], el.tags["addr:street"]].filter(Boolean).join(" ");
     hotels.push({
       id,
@@ -177,10 +200,10 @@ async function overpassLuxuryHotels(centroid, timeoutMs) {
       address: street ? `${street}, San Francisco, CA` : "San Francisco, CA",
       lat,
       lng,
-      stars: 5,
+      stars: resolvedStars,
       nightlyRateUSD: null,
       url: el.tags.website || el.tags["contact:website"] || `https://www.openstreetmap.org/${el.type}/${el.id}`,
-      highlights: el.tags.brand ? `${el.tags.brand} \u2014 luxury 5-star property` : "Luxury 5-star property (OpenStreetMap)",
+      highlights: el.tags.brand ? `${el.tags.brand} \u2014 ${resolvedStars}-star property` : `${resolvedStars}-star property (OpenStreetMap)`,
     });
   }
   return hotels;
@@ -203,7 +226,7 @@ export async function prewarmWebIQ() {
   if (config.webiq.bingKey || config.webiq.serpApiKey) return; // only Overpass needs warming
   const started = Date.now();
   try {
-    const hotels = await overpassLuxuryHotels(SF_DOWNTOWN, config.webiq.timeoutMs);
+    const hotels = await overpassHotels(SF_DOWNTOWN, config.webiq.timeoutMs, 5);
     console.log(`[WebIQ] Overpass pre-warmed in ${((Date.now() - started) / 1000).toFixed(1)}s (${hotels.length} hotels; first live search will be fast).`);
   } catch (err) {
     console.log(`[WebIQ] pre-warm skipped: ${err.message}`);
@@ -211,31 +234,43 @@ export async function prewarmWebIQ() {
 }
 
 /**
- * Find 5-star hotels near the centroid, ranked nearest-first.
+ * Find hotels near the centroid at a requested star tier, ranked nearest-first.
  * @param {{lat:number,lng:number}} centroid
  * @param {object} [opts]
- * @returns {Promise<{hotels:object[], mode:string, status:string, query:string, detail:string}>}
+ * @param {string} [opts.mode] "live" | "captured" | "auto"
+ * @param {number} [opts.stars] requested star rating (1-5, default 5)
+ * @returns {Promise<{hotels:object[], mode:string, status:string, query:string, detail:string, stars:number}>}
  */
 export async function searchHotels(centroid, opts = {}) {
   const mode = (opts.mode || config.webiq.mode || "captured").toLowerCase();
-  const query = buildQuery(centroid);
+  const stars = clampStars(opts.stars);
+  const query = buildQuery(centroid, stars);
   const started = Date.now();
 
   const useCaptured = async (status, detail) => {
     const data = await loadCapturedHotels();
-    const ranked = rankHotelsByDistance(data.hotels, centroid);
+    // Prefer the requested tier; if the captured dataset has nothing at that
+    // tier, fall back to all hotels so the demo always returns something
+    // mappable (with a note explaining the substitution).
+    let pool = data.hotels.filter((h) => Number(h.stars) === stars);
+    let tierNote = "";
+    if (pool.length === 0) {
+      pool = data.hotels;
+      tierNote = ` No ${stars}-star match in captured data; showing nearest available tier.`;
+    }
+    const ranked = rankHotelsByDistance(pool, centroid);
     logCall({
       type: "WEBIQ",
       title: "WebIQ Search",
       mode: "CAPTURED",
       callSite: CALL_SITE,
       request: query,
-      responseSummary: `${ranked.length} 5-star hotels (captured) \u2014 nearest: ${ranked[0]?.name}`,
+      responseSummary: `${ranked.length} ${stars}-star hotels (captured) \u2014 nearest: ${ranked[0]?.name}`,
       durationMs: Date.now() - started,
       status,
-      detail,
+      detail: ((detail || "") + tierNote).trim(),
     });
-    return { hotels: ranked, mode: "CAPTURED", status, query, detail: detail || "" };
+    return { hotels: ranked, mode: "CAPTURED", status, query, detail: ((detail || "") + tierNote).trim(), stars };
   };
 
   if (mode === "captured") return useCaptured("ok", "Captured mode (configured).");
@@ -248,13 +283,13 @@ export async function searchHotels(centroid, opts = {}) {
     let provider;
     if (bingKey || serpApiKey) {
       const results = await callLiveWebSearch(query);
-      hotels = await resultsToHotels(results);
+      hotels = await resultsToHotels(results, stars);
       provider = bingKey ? "Bing Web Search" : "SerpApi";
     } else {
-      hotels = await overpassLuxuryHotels(centroid, timeoutMs);
+      hotels = await overpassHotels(centroid, timeoutMs, stars);
       provider = "OpenStreetMap Overpass";
     }
-    if (hotels.length === 0) throw new Error("Live web search returned no mappable 5-star hotels.");
+    if (hotels.length === 0) throw new Error(`Live web search returned no mappable ${stars}-star hotels.`);
     const ranked = rankHotelsByDistance(hotels, centroid);
     logCall({
       type: "WEBIQ",
@@ -262,11 +297,11 @@ export async function searchHotels(centroid, opts = {}) {
       mode: "LIVE",
       callSite: CALL_SITE,
       request: query,
-      responseSummary: `${ranked.length} hotels from live web search (${provider}) \u2014 nearest: ${ranked[0]?.name}`,
+      responseSummary: `${ranked.length} ${stars}-star hotels from live web search (${provider}) \u2014 nearest: ${ranked[0]?.name}`,
       durationMs: Date.now() - started,
       status: "ok",
     });
-    return { hotels: ranked, mode: "LIVE", status: "ok", query, detail: "" };
+    return { hotels: ranked, mode: "LIVE", status: "ok", query, detail: "", stars };
   } catch (err) {
     if (mode === "live") {
       logCall({

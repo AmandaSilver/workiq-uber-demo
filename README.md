@@ -1,12 +1,12 @@
-# WorkIQ Trip Planner — a hero demo for WorkIQ
+# WorkIQ Trip Planner — a hero demo of WorkIQ
 
 A small, local web app that shows off **WorkIQ** end-to-end:
 
 1. **WorkIQ "Ask"** scans your email for Uber ride receipts — first **live against your real
    inbox** (proof), then it continues on a richer representative sample for a compelling map.
 2. The app **maps** the rides and **totals** what the trip cost.
-3. It **recommends where to stay** next year — the densest cluster of this year's
-   in-city ride stops (airport transfers excluded), using the cluster medoid as the base.
+3. It **recommends where to stay** next year — the geographic center of this year's
+   in-city rides (airport transfers excluded).
 4. **WebIQ** (web search) finds the **best 5-star hotel closest** to that area.
 5. A **WorkIQ "Tool"** emails a summary report of the whole analysis.
 
@@ -103,11 +103,11 @@ showing "captured" then re-running the same step "live").
 3. **Step 1 · Act 2 — load the hero sample.** Click *Start hero scenario (captured 9-ride sample)*.
    The live-proof card stays visible; an **Active dataset — captured sample trip** card appears
    (9 rides, **$227.76**) and the planning flow unlocks. Call out the honest dataset switch: the real
-   trip was too thin for a meaningful recommendation, so the demo continues on a representative sample.
+   trip was too thin for a meaningful centroid, so the demo continues on a representative sample.
 4. **Step 2 — Map & total.** Rides plot on the map; the trip totaled **$227.76**. Note the dashed
    airport transfers heading to SFO.
 5. **Step 3 — Recommend.** Click *Recommend stay area*. A 📍 marker drops on **Union Square** — the
-   medoid of the densest in-city ride cluster. Call out that the 2 airport rides were **excluded** so they don't skew it.
+   center of the in-city rides. Call out that the 2 airport rides were **excluded** so they don't skew it.
 6. **Step 4 — WebIQ.** Click *Search with WebIQ*. A `WebIQ ▸ Search` card appears; the closest 5-star
    hotel (**Palace Hotel**, ~0.08 mi) is starred on the map, with the runners-up listed.
 7. **Step 5 — WorkIQ Tool.** Click *Send with WorkIQ Tool*. A `WorkIQ ▸ Tool` card shows the email was
@@ -158,10 +158,9 @@ minutes after sending for WorkIQ/M365 to index the new mail before it appears in
 `server/services/recommendation.js` (pure logic, no external calls):
 
 - Take every **non-airport** ride's pickup & dropoff coordinates.
-- Cluster the stop points with a small **DBSCAN** pass at city-neighborhood scale.
-- Pick the densest activity cluster, then choose its **medoid** — a real observed stop point — as the recommended base.
+- Compute their **centroid** (geographic center) — that's the recommended base.
 - Label it with the nearest known neighborhood.
-- Rank hotels by **haversine** distance to the recommended point; nearest = the pick.
+- Rank hotels by **haversine** distance to the centroid; nearest = the pick.
 - If *every* ride was an airport transfer, it falls back to using all endpoints.
 
 ---
@@ -180,7 +179,7 @@ workiq-trip-planner/
 │  │  ├─ receiptParser.js   # parse a live WorkIQ answer -> structured rides
 │  │  ├─ geocode.js         # address -> lat/lng (static cache + Nominatim)
 │  │  ├─ routing.js         # pickup->dropoff street route (OSRM, best-effort)
-│  │  ├─ recommendation.js  # DBSCAN + medoid + nearest-hotel logic
+│  │  ├─ recommendation.js  # centroid + nearest-hotel logic
 │  │  └─ callLog.js         # the live "where WorkIQ was invoked" feed
 │  └─ data/captured/        # known-good sample data (see note below)
 └─ public/                  # index.html, app.js, styles.css (Leaflet map)
@@ -191,8 +190,8 @@ workiq-trip-planner/
 | Method & path | Boundary | Purpose |
 |---|---|---|
 | `POST /api/scan-receipts` | 🔵 Ask | scan email → structured rides + total |
-| `GET  /api/recommendation` | — | recommended base + neighborhood |
-| `POST /api/find-hotels` | 🟣 WebIQ | 5-star hotels ranked by distance |
+| `GET  /api/recommendation` | — | centroid + neighborhood |
+| `POST /api/find-hotels` | 🟣 WebIQ | hotels ranked by distance (default 5-star; accepts `stars` 1–5) |
 | `POST /api/send-report` | 🟢 Tool | email/preview the report |
 | `GET  /api/call-log` | — | feed for the Call Log panel |
 | `POST /api/reset` | — | clear demo state |
@@ -204,7 +203,8 @@ workiq-trip-planner/
 `server/data/captured/uber-receipts.json` is a **synthetic, demo-safe sample** — a fabricated SF
 business trip. No real personal receipts are committed to the repo. When you run the **live** WorkIQ
 path, the app uses *your* actual mailbox data at demo time and never writes it to disk. The captured
-hotels in `hotels.json` are real, publicly-listed San Francisco 5-star hotels.
+hotels in `hotels.json` are real, publicly-listed San Francisco hotels across 3-, 4- and 5-star tiers
+(the chat can re-search any tier, e.g. "find a 3-star hotel").
 
 ## Requirements
 

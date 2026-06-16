@@ -17,6 +17,9 @@ import {
   rankHotelsByDistance,
   synthesizeTripAnswer,
   answerTripFollowUp,
+  chatWantsHotelSearch,
+  answerHotelFound,
+  parseRequestedStars,
   TRIP_DEBRIEF_QUESTION,
 } from "./services/recommendation.js";
 
@@ -24,7 +27,7 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const app = express();
 app.use(express.json({ limit: "1mb" }));
 
-// A trip needs at least this many in-city rides before its activity cluster is
+// A trip needs at least this many in-city rides before its geographic center is
 // a meaningful "where to stay" signal. Below this, the live result is too thin
 // and we fall back to the representative sample (see /api/scan-receipts).
 const MIN_INCITY_FOR_LIVE = 3;
@@ -61,9 +64,6 @@ function recomputeRecommendation() {
     usedAirportFallback: centroidInfo.usedAirportFallback,
     includedRideIds: centroidInfo.includedRideIds,
     excludedRideIds: centroidInfo.excludedRideIds,
-    method: centroidInfo.method,
-    clusterCount: centroidInfo.clusterCount,
-    noisePointCount: centroidInfo.noisePointCount,
   };
   return state.recommendation;
 }
@@ -103,7 +103,7 @@ app.post("/api/scan-receipts", async (req, res) => {
 
     // Single fully-live flow with a captured safety net. A real mailbox is the
     // hero, but a trip with only a ride or two can't produce a meaningful
-    // stay-area recommendation. When live succeeds yet returns too few in-city rides,
+    // stay-area centroid. When live succeeds yet returns too few in-city rides,
     // transparently fall back to the representative sample so the planning steps
     // still have something compelling to work with. Skip this only when the
     // presenter has explicitly pinned the mode to "live".
@@ -128,7 +128,7 @@ app.post("/api/scan-receipts", async (req, res) => {
     state.hotels = [];
     state.recommendedHotel = null;
     // The active dataset (live or sample) drives the recommendation directly:
-    // ready as soon as we can compute a clustered recommendation from it.
+    // ready as soon as we can compute a centroid from it.
     state.readyForRecommendation = Boolean(recomputeRecommendation());
     // Synthesize the conversational "trip debrief" answer for the Ask chat panel,
     // grounded in the receipts WorkIQ just extracted.
@@ -160,7 +160,7 @@ app.post("/api/scan-receipts", async (req, res) => {
   }
 });
 
-// --- Step 2: recommendation (densest activity cluster of the trip) ------------
+// --- Step 2: recommendation (geographic center of the trip) ------------------
 app.get("/api/recommendation", (_req, res) => {
   if (state.rides.length === 0) {
     return res.status(409).json({ error: "No rides yet. Run /api/scan-receipts first." });
@@ -181,7 +181,7 @@ app.post("/api/find-hotels", async (req, res) => {
     return res.status(409).json({ error: "No recommendation yet. Run scan + recommendation first." });
   }
   try {
-    const result = await searchHotels(state.recommendation.centroid, { mode: req.body?.mode });
+    const result = await searchHotels(state.recommendation.centroid, { mode: req.body?.mode, stars: req.body?.stars });
     state.hotels = result.hotels;
     state.recommendedHotel = result.hotels[0] || null;
     res.json({
@@ -189,6 +189,7 @@ app.post("/api/find-hotels", async (req, res) => {
       status: result.status,
       detail: result.detail,
       query: result.query,
+      stars: result.stars,
       hotels: result.hotels,
       recommendedHotel: state.recommendedHotel,
     });
@@ -220,9 +221,43 @@ app.post("/api/send-report", async (req, res) => {
 // --- Ask chat: deterministic follow-up Q&A over the extracted trip data ------
 // Powers the free-form chat input. Answers are grounded in the rides WorkIQ
 // already pulled (no extra live call), so follow-ups are reliable on stage.
-app.post("/api/ask", (req, res) => {
+// Exception: if the user asks the chat to FIND a hotel and we have a stay-area
+// but no hotel yet, we run a live WebIQ search right here so "find me a hotel"
+// (or a simple "yes please") actually returns a result instead of punting.
+app.post("/api/ask", async (req, res) => {
   const question = String(req.body?.question || "").trim();
   if (!question) return res.status(400).json({ error: "Empty question." });
+
+  // Honor the star tier the user typed ("find a 3-star hotel"); default 5-star.
+  // Re-run the search when we have no hotel yet OR they asked for a different
+  // tier than the one currently pinned.
+  const requestedStars = parseRequestedStars(question);
+  const needHotelSearch =
+    state.recommendation &&
+    chatWantsHotelSearch(question) &&
+    (!state.recommendedHotel || Number(state.recommendedHotel.stars) !== requestedStars);
+
+  if (needHotelSearch) {
+    try {
+      const result = await searchHotels(state.recommendation.centroid, { mode: req.body?.mode, stars: requestedStars });
+      state.hotels = result.hotels;
+      state.recommendedHotel = result.hotels[0] || null;
+      return res.json({
+        answer: answerHotelFound(state.recommendation, state.recommendedHotel, requestedStars),
+        action: "hotels-found",
+        hotels: result.hotels,
+        recommendedHotel: state.recommendedHotel,
+        query: result.query,
+        stars: result.stars,
+        mode: result.mode,
+        status: result.status,
+        detail: result.detail,
+      });
+    } catch {
+      // Live search hiccuped — fall through to a grounded text answer.
+    }
+  }
+
   const answer = answerTripFollowUp(question, {
     rides: state.rides,
     summary: state.summary,

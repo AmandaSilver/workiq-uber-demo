@@ -1,7 +1,7 @@
 {
   "_dataset": "captured-webiq-results",
-  "_note": "Captured WebIQ (web search) results for 5-star hotels in downtown San Francisco. Hotel names, addresses and approximate nightly rates are real and were retrieved via web search; coordinates are approximate. The LIVE WebIQ path re-runs the search at demo time.",
-  "query": "best 5-star luxury hotels in downtown San Francisco near Union Square, SoMa and Yerba Buena",
+  "_note": "Captured WebIQ (web search) results for downtown San Francisco hotels across star tiers (3/4/5-star). Hotel names, addresses and approximate nightly rates are real and were retrieved via web search; coordinates are approximate. The LIVE WebIQ path re-runs the search at demo time and filters by the requested star rating.",
+  "query": "best hotels in downtown San Francisco near Union Square, SoMa and Yerba Buena (3-, 4- and 5-star)",
   "hotels": [
     {
       "id": "four-seasons-sf",
@@ -52,6 +52,66 @@
       "nightlyRateUSD": 609,
       "url": "https://www.ritzcarlton.com/en/hotels/sanfrancisco",
       "highlights": "Iconic Nob Hill landmark, full-service spa, club lounge, short walk to Union Square."
+    },
+    {
+      "id": "grand-hyatt-sf",
+      "name": "Grand Hyatt San Francisco Union Square",
+      "address": "345 Stockton St, San Francisco, CA 94108",
+      "lat": 37.7888, "lng": -122.4066,
+      "stars": 4,
+      "nightlyRateUSD": 329,
+      "url": "https://www.hyatt.com/en-US/hotel/california/grand-hyatt-san-francisco/sfogh",
+      "highlights": "Full-service tower directly on Union Square, OneUP restaurant, skyline rooms."
+    },
+    {
+      "id": "hotel-nikko-sf",
+      "name": "Hotel Nikko San Francisco",
+      "address": "222 Mason St, San Francisco, CA 94102",
+      "lat": 37.7858, "lng": -122.4097,
+      "stars": 4,
+      "nightlyRateUSD": 289,
+      "url": "https://www.hotelnikkosf.com/",
+      "highlights": "Indoor pool and fitness club, Feinstein's cabaret, a block from Union Square and the theater district."
+    },
+    {
+      "id": "hotel-zetta-sf",
+      "name": "Hotel Zetta San Francisco",
+      "address": "55 5th St, San Francisco, CA 94103",
+      "lat": 37.7831, "lng": -122.4078,
+      "stars": 4,
+      "nightlyRateUSD": 259,
+      "url": "https://www.viceroyhotelsandresorts.com/zetta",
+      "highlights": "Design-forward SoMa boutique, The Cavalier brasserie, close to Moscone and Yerba Buena."
+    },
+    {
+      "id": "hotel-union-square-sf",
+      "name": "Hotel Union Square",
+      "address": "114 Powell St, San Francisco, CA 94102",
+      "lat": 37.7857, "lng": -122.4081,
+      "stars": 3,
+      "nightlyRateUSD": 169,
+      "url": "https://www.hotelunionsquare.com/",
+      "highlights": "Historic 1913 property right on the Powell St cable car line, steps from Union Square."
+    },
+    {
+      "id": "the-mosser-sf",
+      "name": "The Mosser Hotel",
+      "address": "54 4th St, San Francisco, CA 94103",
+      "lat": 37.7855, "lng": -122.4051,
+      "stars": 3,
+      "nightlyRateUSD": 149,
+      "url": "https://www.themosser.com/",
+      "highlights": "Victorian-era value hotel near Westfield Centre, Moscone and Yerba Buena."
+    },
+    {
+      "id": "powell-hotel-sf",
+      "name": "Powell Hotel",
+      "address": "28 Cyril Magnin St, San Francisco, CA 94102",
+      "lat": 37.7846, "lng": -122.4086,
+      "stars": 3,
+      "nightlyRateUSD": 159,
+      "url": "https://www.thepowellhotel.com/",
+      "highlights": "Compact European-style rooms by the Powell St BART/Muni station and Union Square."
     }
   ]
 }
